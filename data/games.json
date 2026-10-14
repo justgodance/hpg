@@ -1,0 +1,218 @@
+[
+  {
+    "title": "Hollow Knight",
+    "category": "STEAM",
+    "genre": "Метроидвания",
+    "preset_name": "Steam: Метроидвания",
+    "hltb_hours": 27.0,
+    "reward_points": 250,
+    "penalty_points": 80
+  },
+  {
+    "title": "Celeste",
+    "category": "STEAM",
+    "genre": "Точный 2D-платформер",
+    "preset_name": "Steam: Инди-платформер",
+    "hltb_hours": 8.5,
+    "reward_points": 150,
+    "penalty_points": 50
+  },
+  {
+    "title": "Hades",
+    "category": "STEAM",
+    "genre": "Action Roguelite",
+    "preset_name": "Steam: Action-рогалик",
+    "hltb_hours": 22.0,
+    "reward_points": 200,
+    "penalty_points": 70
+  },
+  {
+    "title": "Dead Cells",
+    "category": "STEAM",
+    "genre": "Rogue-lite / Слэшер",
+    "preset_name": "Steam: Rogue-lite",
+    "hltb_hours": 15.0,
+    "reward_points": 180,
+    "penalty_points": 60
+  },
+  {
+    "title": "Cuphead",
+    "category": "STEAM",
+    "genre": "Boss Rush / Ретро-анимация",
+    "preset_name": "Steam: Хардкорный экшен",
+    "hltb_hours": 11.0,
+    "reward_points": 220,
+    "penalty_points": 80
+  },
+  {
+    "title": "Portal 2",
+    "category": "STEAM",
+    "genre": "Головоломка от первого лица",
+    "preset_name": "Steam: Физическая головоломка",
+    "hltb_hours": 8.5,
+    "reward_points": 120,
+    "penalty_points": 40
+  },
+  {
+    "title": "Slay the Spire",
+    "category": "STEAM",
+    "genre": "Колодостроительный рогалик",
+    "preset_name": "Steam: Карточный рогалик",
+    "hltb_hours": 12.0,
+    "reward_points": 160,
+    "penalty_points": 50
+  },
+  {
+    "title": "Elden Ring",
+    "category": "GOTY",
+    "genre": "Открытый мир / Action-RPG",
+    "preset_name": "GOTY: Великий эпос",
+    "hltb_hours": 58.0,
+    "reward_points": 500,
+    "penalty_points": 180
+  },
+  {
+    "title": "The Witcher 3: Wild Hunt",
+    "category": "GOTY",
+    "genre": "Сюжетная Action-RPG",
+    "preset_name": "GOTY: Легендарная сага",
+    "hltb_hours": 51.5,
+    "reward_points": 450,
+    "penalty_points": 150
+  },
+  {
+    "title": "Sekiro: Shadows Die Twice",
+    "category": "GOTY",
+    "genre": "Action / Соулслайк",
+    "preset_name": "GOTY: Мастер клинка",
+    "hltb_hours": 30.0,
+    "reward_points": 340,
+    "penalty_points": 110
+  },
+  {
+    "title": "Dark Souls III",
+    "category": "SERIES",
+    "genre": "Темное фэнтези / Action-RPG",
+    "preset_name": "Франшиза Soulsborne",
+    "hltb_hours": 32.5,
+    "reward_points": 350,
+    "penalty_points": 120
+  },
+  {
+    "title": "Bloodborne",
+    "category": "SERIES",
+    "genre": "Викторианский хоррор / RPG",
+    "preset_name": "Франшиза Soulsborne",
+    "hltb_hours": 34.0,
+    "reward_points": 360,
+    "penalty_points": 130
+  },
+  {
+    "title": "BioShock",
+    "category": "SERIES",
+    "genre": "Иммерсивный шутер",
+    "preset_name": "Трилогия BioShock",
+    "hltb_hours": 12.0,
+    "reward_points": 150,
+    "penalty_points": 50
+  },
+  {
+    "title": "Blasphemous",
+    "category": "PRESET",
+    "genre": "Мрачная метроидвания",
+    "preset_name": "Пресет: Метроидвании и 2D",
+    "hltb_hours": 14.5,
+    "reward_points": 190,
+    "penalty_points": 65
+  },
+  {
+    "title": "Ori and the Blind Forest",
+    "category": "PRESET",
+    "genre": "Атмосферный платформер",
+    "preset_name": "Пресет: Инди-эстетика",
+    "hltb_hours": 8.0,
+    "reward_points": 140,
+    "penalty_points": 45
+  },
+  {
+    "title": "Super Mario Odyssey",
+    "category": "EMULATOR",
+    "genre": "3D-платформер / Приключение",
+    "preset_name": "Эмулятор: Nintendo Switch",
+    "hltb_hours": 13.0,
+    "reward_points": 180,
+    "penalty_points": 60
+  },
+  {
+    "title": "Castlevania: Symphony of the Night",
+    "category": "EMULATOR",
+    "genre": "Классическая 2D-метроидвания",
+    "preset_name": "Эмулятор: PlayStation 1 (Ретро)",
+    "hltb_hours": 9.0,
+    "reward_points": 150,
+    "penalty_points": 50
+  },
+  {
+    "title": "The Legend of Zelda: Ocarina of Time",
+    "category": "EMULATOR",
+    "genre": "Культовое приключение",
+    "preset_name": "Эмулятор: Nintendo 64 (Ретро)",
+    "hltb_hours": 27.0,
+    "reward_points": 280,
+    "penalty_points": 90
+  },
+  {
+    "title": "Baldur's Gate 3",
+    "category": "SANTA_TOP",
+    "genre": "Партийная CRPG",
+    "preset_name": "Топ от Санты: Партийная RPG",
+    "hltb_hours": 65.0,
+    "reward_points": 550,
+    "penalty_points": 180
+  },
+  {
+    "title": "Cyberpunk 2077",
+    "category": "SANTA_TOP",
+    "genre": "Киберпанк Action-RPG",
+    "preset_name": "Топ от Санты: Киберпанк",
+    "hltb_hours": 25.0,
+    "reward_points": 300,
+    "penalty_points": 100
+  },
+  {
+    "title": "Red Dead Redemption 2",
+    "category": "SANTA_TOP",
+    "genre": "Кинематографичный вестерн",
+    "preset_name": "Топ от Санты: Вестерн",
+    "hltb_hours": 50.0,
+    "reward_points": 480,
+    "penalty_points": 160
+  },
+  {
+    "title": "The Lord of the Rings: Gollum",
+    "category": "SANTA_COAL",
+    "genre": "Стелс-испытание",
+    "preset_name": "Уголёк Санты: Стелс за Голлума",
+    "hltb_hours": 15.0,
+    "reward_points": 200,
+    "penalty_points": 150
+  },
+  {
+    "title": "Ride to Hell: Retribution",
+    "category": "SANTA_COAL",
+    "genre": "Байкерский трэш-экшен",
+    "preset_name": "Уголёк Санты: Байкерский ад",
+    "hltb_hours": 9.0,
+    "reward_points": 220,
+    "penalty_points": 170
+  },
+  {
+    "title": "Big Rigs: Over the Road Racing",
+    "category": "SANTA_COAL",
+    "genre": "Легендарные гонки без тормозов",
+    "preset_name": "Уголёк Санты: Гонка без тормозов",
+    "hltb_hours": 2.0,
+    "reward_points": 100,
+    "penalty_points": 80
+  }
+]

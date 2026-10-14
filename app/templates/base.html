@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Канбан-доска Марафона | Игровая Гильдия{% endblock %}</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- HTMX (CDN) -->
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+
+    <style>
+        /* Плавные переходы для HTMX-замен */
+        .htmx-swapping {
+            opacity: 0;
+            transition: opacity 200ms ease-out;
+        }
+        .htmx-settling {
+            opacity: 1;
+            transition: opacity 200ms ease-in;
+        }
+        /* Темная стилизация скроллбара */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #090d16;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1e293b;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #334155;
+        }
+    </style>
+</head>
+<body class="bg-[#090d16] text-slate-100 font-sans min-h-screen flex flex-col antialiased selection:bg-amber-500 selection:text-black">
+
+    <!-- 1. Шапка (Header / Dashboard) -->
+    {% block header %}
+    <header class="sticky top-0 z-50 bg-[#0c1220]/90 backdrop-blur-md border-b border-slate-800 shadow-xl">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-4">
+            
+            <!-- Логотип и статус марафона -->
+            <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-xl bg-gradient-to-tr from-amber-600 to-yellow-400 flex items-center justify-center shadow-lg shadow-amber-500/20 ring-1 ring-yellow-300/40">
+                    <span class="text-2xl">⚔️</span>
+                </div>
+                <div>
+                    <h1 class="text-lg font-black tracking-tight bg-gradient-to-r from-amber-200 via-yellow-300 to-amber-500 bg-clip-text text-transparent">
+                        ИГРОВОЙ МАРАФОН
+                    </h1>
+                    <div class="flex items-center gap-2 text-xs text-slate-400 font-medium">
+                        <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        Канбан-доска гильдии
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard текущего пользователя -->
+            <div id="user-stats-bar" class="flex items-center gap-4 bg-slate-900/90 px-4 py-2.5 rounded-2xl border border-slate-800 shadow-inner">
+                
+                <!-- Имя текущего пользователя -->
+                <div class="flex flex-col">
+                    <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Игрок</span>
+                    <span class="text-sm font-extrabold text-amber-300 flex items-center gap-1.5">
+                        👤 {{ current_user.username if current_user else "Гость" }}
+                    </span>
+                </div>
+
+                <div class="h-8 w-px bg-slate-800"></div>
+
+                <!-- Очки игрока (total_score) -->
+                <div class="flex flex-col items-center">
+                    <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Очки</span>
+                    <span class="text-sm font-black text-amber-400 flex items-center gap-1">
+                        🪙 {{ current_user.total_score if current_user else 0 }}
+                    </span>
+                </div>
+
+                <div class="h-8 w-px bg-slate-800"></div>
+
+                <!-- Бесплатные дропы (free_drops) -->
+                <div class="flex flex-col items-center" title="Количество доступных бесплатных сбросов без штрафа">
+                    <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Дропы</span>
+                    <span class="text-sm font-black text-cyan-400 flex items-center gap-1">
+                        🛡️ {{ current_user.free_drops if current_user else 0 }}
+                    </span>
+                </div>
+
+                <div class="h-8 w-px bg-slate-800"></div>
+
+                <!-- Доступные рероллы (rerolls_left) -->
+                <div class="flex flex-col items-center" title="Количество попыток переброса рулетки">
+                    <span class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Рероллы</span>
+                    <span class="text-sm font-black text-purple-400 flex items-center gap-1">
+                        🎲 {{ current_user.rerolls_left if current_user else 0 }}
+                    </span>
+                </div>
+
+                <!-- Индикатор Андердога (при наличии) -->
+                {% if current_user and current_user.is_underdog %}
+                <div class="ml-1 pl-3 border-l border-rose-500/30 flex items-center">
+                    <span class="px-2.5 py-1 text-xs font-black uppercase tracking-wider rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse flex items-center gap-1" title="Отставание > 2000 очков: +20% бонус к наградам!">
+                        🔥 Андердог
+                    </span>
+                </div>
+                {% endif %}
+
+            </div>
+
+        </div>
+    </header>
+    {% endblock %}
+
+    <!-- Основной контент страницы -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Подвал -->
+    <footer class="border-t border-slate-900 bg-[#070b12] py-4 text-center text-xs text-slate-600">
+        Марафон Гильдии &bull; FastAPI + Jinja2 + Tailwind CSS + HTMX
+    </footer>
+
+</body>
+</html>
