@@ -1,0 +1,110 @@
+{# templates/partials/completion_modal.html #}
+
+{% set locked = quest.locked_reward or (quest.game.reward_points if quest.game else 1000) %}
+{% set success_points = (locked * challenge.bonus_multiplier)|round|int %}
+{% set fail_points = (locked * challenge.penalty_multiplier)|round|int %}
+
+<div id="completion-modal" 
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 transition-all duration-300">
+
+    <!-- Корпус Модального Окна Завершения Квеста -->
+    <div class="relative w-full max-w-lg bg-[#180e08] border-4 border-[#542d17] rounded-2xl shadow-[0_25px_70px_rgba(0,0,0,0.98)] p-6 sm:p-8 flex flex-col items-center text-center overflow-hidden"
+         onclick="event.stopPropagation()">
+        
+        <!-- Железные заклепки по углам ларца -->
+        <span class="absolute top-3 left-3 w-3.5 h-3.5 rounded-full bg-gradient-to-br from-stone-400 to-stone-800 border border-stone-600 shadow"></span>
+        <span class="absolute bottom-3 left-3 w-3.5 h-3.5 rounded-full bg-gradient-to-br from-stone-400 to-stone-800 border border-stone-600 shadow"></span>
+        <span class="absolute bottom-3 right-3 w-3.5 h-3.5 rounded-full bg-gradient-to-br from-stone-400 to-stone-800 border border-stone-600 shadow"></span>
+
+        <!-- Кнопка быстрого закрытия без сдачи -->
+        <button onclick="document.getElementById('completion-modal').remove()"
+                class="absolute top-3 right-3 w-8 h-8 rounded-full bg-[#2a160d] border border-[#6b3a1d] text-[#e0cfbe] hover:text-white hover:border-amber-500 hover:bg-[#3d2013] text-lg font-black flex items-center justify-center transition-all cursor-pointer z-30 shadow"
+                title="Отмена">
+            ✕
+        </button>
+
+        <!-- Заголовок Завершения Квеста -->
+        <div class="mb-5 space-y-2">
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#2a160d] border border-[#69381c] text-amber-300 text-sm sm:text-base font-heading font-black tracking-widest uppercase shadow-inner">
+                <span>⚖️ ЗАВЕРШЕНИЕ КВЕСТА ⚖️</span>
+            </div>
+            <h2 class="text-2xl sm:text-3xl font-heading font-black text-[#fdf4e2] tracking-wide uppercase drop-shadow">
+                Итоги выполнения квеста
+            </h2>
+            <p class="text-base sm:text-lg text-[#ecd7be] font-serif italic">
+                Укажите, был ли выполнен дополнительный челлендж:
+            </p>
+        </div>
+
+        <!-- КАРТОЧКА КВЕСТА И ЧЕЛЛЕНДЖА -->
+        <div class="w-full p-4 sm:p-5 rounded-xl bg-[#29160c]/95 border-2 border-amber-600/70 shadow-lg text-left space-y-3 mb-5">
+            <div class="flex items-center justify-between border-b border-[#4d2815] pb-2">
+                <div>
+                    <span class="text-xs font-heading font-black uppercase text-amber-400 block tracking-wider">
+                        Завершенная игра:
+                    </span>
+                    <span class="text-lg sm:text-xl font-heading font-black text-[#fdf4e2] block leading-tight">
+                        {{ quest.game.title if quest.game else 'Секретная игра' }}
+                    </span>
+                </div>
+                <div class="text-right">
+                    <span class="text-xs font-heading uppercase text-[#c4a689] block font-bold">Базовая награда</span>
+                    <span class="text-base sm:text-lg font-heading font-black text-amber-300 block">
+                        <span class="text-amber-400">★</span> {{ locked }} очков
+                    </span>
+                </div>
+            </div>
+
+            <!-- Текст челленджа -->
+            <div class="p-3.5 rounded-lg bg-[#150a04] border border-[#522912] space-y-1">
+                <span class="text-xs font-heading font-black uppercase tracking-wider text-amber-400 block">
+                    Дополнительный челлендж:
+                </span>
+                <p class="text-sm sm:text-base font-heading font-bold text-[#f5ebd6] leading-snug">
+                    {{ challenge.description }}
+                </p>
+            </div>
+        </div>
+
+        <!-- ДВЕ КНОПКИ РЕШЕНИЯ (УСПЕХ ИЛИ ПРОВАЛ) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5 w-full">
+            
+            <!-- 1. ЧЕЛЛЕНДЖ ВЫПОЛНЕН (УСПЕХ) -->
+            <button hx-post="/quests/{{ quest.id }}/complete"
+                    hx-vals='{"challenge_status": "success"}'
+                    hx-target="#main-board"
+                    hx-swap="outerHTML"
+                    class="w-full py-4 px-4 rounded-xl font-heading font-black text-sm sm:text-base uppercase tracking-wider text-emerald-100 bg-gradient-to-b from-emerald-700 via-emerald-800 to-emerald-950 hover:from-emerald-600 hover:to-emerald-900 border-2 border-emerald-500 shadow-[0_4px_16px_rgba(16,185,129,0.4)] active:scale-95 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center gap-1">
+                <div class="flex items-center gap-2">
+                    <span class="text-lg">🎯</span>
+                    <span>Челлендж выполнен</span>
+                </div>
+                <span class="text-xs text-emerald-300 font-sans font-bold">
+                    +{{ ((challenge.bonus_multiplier - 1.0) * 100)|round|int }}% &bull; ★ {{ success_points }} очков
+                </span>
+            </button>
+
+            <!-- 2. ЧЕЛЛЕНДЖ ПРОВАЛЕН (ПРОВАЛ) -->
+            <button hx-post="/quests/{{ quest.id }}/complete"
+                    hx-vals='{"challenge_status": "failed"}'
+                    hx-target="#main-board"
+                    hx-swap="outerHTML"
+                    class="w-full py-4 px-4 rounded-xl font-heading font-black text-sm sm:text-base uppercase tracking-wider text-red-100 bg-gradient-to-b from-red-700 via-red-800 to-red-950 hover:from-red-600 hover:to-red-900 border-2 border-red-500 shadow-[0_4px_16px_rgba(239,68,68,0.4)] active:scale-95 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center gap-1">
+                <div class="flex items-center gap-2">
+                    <span class="text-lg">❌</span>
+                    <span>Челлендж провален</span>
+                </div>
+                <span class="text-xs text-red-300 font-sans font-bold">
+                    -{{ ((1.0 - challenge.penalty_multiplier) * 100)|round|int }}% &bull; ★ {{ fail_points }} очков
+                </span>
+            </button>
+
+        </div>
+
+        <p class="text-xs text-[#a88a6d] font-serif italic text-center mt-4">
+            При провале челленджа начисляется штрафная сумма очков
+        </p>
+
+    </div>
+
+</div>

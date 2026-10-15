@@ -51,6 +51,11 @@ class Quest(Base):
         nullable=True,
         index=True,
     )
+    challenge_successful: Mapped[Optional[bool]] = mapped_column(
+        Boolean,
+        nullable=True,
+        default=None,
+    )
     status: Mapped[QuestStatus] = mapped_column(
         Enum(QuestStatus, name="quest_status_enum", native_enum=False),
         default=QuestStatus.AVAILABLE,
@@ -117,16 +122,7 @@ class Quest(Base):
         lazy="selectin",
     )
 
-    __table_args__ = (
-        # Partial unique index: a user can have at most ONE quest in 'IN_PROGRESS' status
-        Index(
-            "uq_user_active_quest",
-            "user_id",
-            unique=True,
-            sqlite_where=text("status = 'IN_PROGRESS' AND user_id IS NOT NULL"),
-            postgresql_where=text("status = 'IN_PROGRESS' AND user_id IS NOT NULL"),
-        ),
-    )
+
 
     def __repr__(self) -> str:
         return (

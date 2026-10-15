@@ -1,26 +1,38 @@
 [
   {
     "description": "Пройти на максимальном уровне сложности",
-    "multiplier": 1.4
+    "multiplier": 1.4,
+    "bonus_multiplier": 1.4,
+    "penalty_multiplier": 0.8
   },
   {
     "description": "Без смертей на боссах (перезапуск боя при гибели)",
-    "multiplier": 1.5
+    "multiplier": 1.5,
+    "bonus_multiplier": 1.5,
+    "penalty_multiplier": 0.75
   },
   {
     "description": "Собрать 100% сюжетных достижений / коллекционных предметов",
-    "multiplier": 1.3
+    "multiplier": 1.3,
+    "bonus_multiplier": 1.3,
+    "penalty_multiplier": 0.85
   },
   {
     "description": "Только со стартовым снаряжением / без покупки апгрейдов",
-    "multiplier": 1.5
+    "multiplier": 1.5,
+    "bonus_multiplier": 1.5,
+    "penalty_multiplier": 0.7
   },
   {
-    "description": "Стрим всего прохождения для согильдийцев",
-    "multiplier": 1.2
+    "description": "Стрим всего прохождения для зрителей турнира",
+    "multiplier": 1.2,
+    "bonus_multiplier": 1.2,
+    "penalty_multiplier": 0.9
   },
   {
     "description": "Спидран: уложиться быстрее расчетного времени HLTB на 20%",
-    "multiplier": 1.35
+    "multiplier": 1.35,
+    "bonus_multiplier": 1.35,
+    "penalty_multiplier": 0.85
   }
 ]

@@ -9,7 +9,7 @@ from app.crud.quest import refill_board
 from app.database import async_session_maker, init_db
 # Ensure models are imported so that Base.metadata has them registered
 import app.models  # noqa: F401
-from app.routers import challenges, games, quests, users, web
+from app.routers import admin, challenges, games, quests, users, web
 from app.routers.web import get_or_seed_users
 
 
@@ -32,8 +32,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Static files (avatars, uploads, assets)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # Web UI templates & HTMX endpoints
 app.include_router(web.router)
+
+# Admin endpoints
+app.include_router(admin.router)
 
 # REST API endpoints
 app.include_router(users.router)

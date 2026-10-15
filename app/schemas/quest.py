@@ -50,6 +50,7 @@ class QuestGameRead(BaseModel):
 class QuestUserRead(BaseModel):
     id: int
     username: str
+    avatar_url: str | None = None
     total_score: int
     free_drops: int
     rerolls_left: int
@@ -62,6 +63,7 @@ class QuestResponse(BaseModel):
     game_id: int | None = None
     user_id: int | None = None
     challenge_id: int | None = None
+    challenge_successful: bool | None = None
     status: QuestStatus
 
     # Categories & Visual card types
@@ -105,35 +107,35 @@ class QuestResponse(BaseModel):
             return active_game.title
 
         if self.card_type == "SANTA" or self.is_santa_box:
-            return "Таинственный Подарок Санты"
+            return "Секретный Подарок (50/50)"
 
         if not active_game:
-            return f"Контракт {self.card_type}"
+            return f"Квест {self.card_type}"
 
         if self.card_type == "PRESET":
             return active_game.preset_name or "Тематический Пресет"
         elif self.card_type == "SERIES":
-            return active_game.preset_name or "Контракт на серию игр"
+            return active_game.preset_name or "Серия игр"
         elif self.card_type == "EMULATOR":
             return active_game.preset_name or "Ретро-эмулятор"
         elif self.card_type == "GOTY":
             return active_game.preset_name or "Шедевр года (GOTY)"
         elif self.card_type == "STEAM":
             return f"Steam: {active_game.genre}"
-        return f"Контракт {self.card_type}"
+        return f"Квест {self.card_type}"
 
     @computed_field
     @property
     def display_condition(self) -> str:
-        """Показывает жанр и условия контракта."""
+        """Показывает жанр и условия квеста."""
         active_game = self.current_rolled_game or self.game
         if not active_game:
-            return "Условия контракта формируются..."
+            return "Условия квеста формируются..."
 
         if self.card_type == "SANTA" or self.is_santa_box:
             return "50% шанс на Топ-хит (+10%) или Уголёк (+50%)"
         elif self.card_type == "PRESET":
-            return f"Жанр: {active_game.genre} &bull; Пресет гильдии"
+            return f"Жанр: {active_game.genre} &bull; Пресет игр"
         elif self.card_type == "SERIES":
             return f"Жанр: {active_game.genre} &bull; Связанная франшиза"
         elif self.card_type == "EMULATOR":

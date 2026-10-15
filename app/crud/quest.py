@@ -192,32 +192,45 @@ async def take_quest(
     quest_id: int,
     user_id: int,
     challenge_id: int | None = None,
+    specific_game_id: int | None = None,
 ) -> Quest:
     """Assigns an AVAILABLE quest to user with Santa box unpacking, inflation locking, and conveyor refill."""
-    # 1. Check if user already holds an active quest
-    active_quest = await get_user_active_quest(session, user_id)
-    if active_quest:
-        active_title = active_quest.game.title if active_quest.game else "Секретный квест"
-        raise ValueError(f"У пользователя уже есть активный квест #{active_quest.id} ('{active_title}')")
+    # 1. Row-level lock via with_for_update()
+    quest_stmt = (
+        select(Quest)
+        .where(Quest.id == quest_id)
+        .options(
+            selectinload(Quest.game),
+            selectinload(Quest.current_rolled_game),
+            selectinload(Quest.user),
+            selectinload(Quest.challenge),
+        )
+        .with_for_update()
+    )
+    quest = (await session.execute(quest_stmt)).scalar_one_or_none()
+    if not quest or quest.status != QuestStatus.AVAILABLE:
+        raise ValueError("Контракт уже забрал другой игрок!")
 
     # 2. Check user existence
     user = await session.get(User, user_id)
     if not user:
         raise ValueError(f"Пользователь #{user_id} не найден")
 
-    # 3. Load quest
-    quest = await get_quest_by_id(session, quest_id)
-    if not quest:
-        raise ValueError(f"Квест #{quest_id} не найден")
-    if quest.status != QuestStatus.AVAILABLE:
-        raise ValueError(f"Квест #{quest_id} недоступен для взятия (статус: {quest.status.value})")
+    # 3. Check slots limit: user cannot have 1 or more IN_PROGRESS quests
+    active_count_stmt = (
+        select(func.count(Quest.id))
+        .where(Quest.user_id == user_id, Quest.status == QuestStatus.IN_PROGRESS)
+    )
+    active_count = (await session.execute(active_count_stmt)).scalar() or 0
+    if active_count >= 1:
+        raise ValueError("Достигнут лимит активных квестов: у вас уже есть один активный квест. Сдайте или сбросьте текущий.")
 
     # 4. Underdog check
     if quest.is_underdog_only:
         user_is_underdog = await is_underdog(session, user)
         if not user_is_underdog:
             raise PermissionError(
-                f"Этот контракт доступен только участникам со статусом 'Андердог' "
+                f"Этот квест доступен только участникам со статусом 'Андердог' "
                 f"(отставание от лидера > {settings.UNDERDOG_SCORE_GAP} очков)"
             )
 
@@ -228,20 +241,27 @@ async def take_quest(
     intervals = max(0, int(elapsed_seconds // interval_seconds))
     inflation_mult = 1.0 + settings.INFLATION_RATE_PER_INTERVAL * intervals
 
-    # 5. Распаковка подарка Санты (50/50 жребий)
+    # 5. Распаковка подарка Санты (50/50 жребий или конкретная выпавшая игра)
     if quest.is_santa_box:
-        is_top_gift = random.choice([True, False])
-        target_category = "SANTA_TOP" if is_top_gift else "SANTA_COAL"
-        bonus_pct = 0.10 if is_top_gift else 0.50
+        if specific_game_id:
+            santa_game = await session.get(Game, specific_game_id)
+            if not santa_game:
+                fallback_query = select(Game).order_by(func.random()).limit(1)
+                santa_game = (await session.execute(fallback_query)).scalar_one()
+            target_category = santa_game.category
+            bonus_pct = 0.10 if target_category == "SANTA_TOP" else 0.50
+        else:
+            is_top_gift = random.choice([True, False])
+            target_category = "SANTA_TOP" if is_top_gift else "SANTA_COAL"
+            bonus_pct = 0.10 if is_top_gift else 0.50
 
-        # Выбираем случайную игру из соответствующей категории Санты
-        santa_query = select(Game).where(Game.category == target_category).order_by(func.random()).limit(1)
-        santa_game = (await session.execute(santa_query)).scalar_one_or_none()
+            # Выбираем случайную игру из соответствующей категории Санты
+            santa_query = select(Game).where(Game.category == target_category).order_by(func.random()).limit(1)
+            santa_game = (await session.execute(santa_query)).scalar_one_or_none()
 
-        if not santa_game:
-            # Защитный фолбэк на случай отсутствия игр категории
-            fallback_query = select(Game).order_by(func.random()).limit(1)
-            santa_game = (await session.execute(fallback_query)).scalar_one()
+            if not santa_game:
+                fallback_query = select(Game).order_by(func.random()).limit(1)
+                santa_game = (await session.execute(fallback_query)).scalar_one()
 
         quest.game_id = santa_game.id
         quest.is_santa_box = False
@@ -252,7 +272,9 @@ async def take_quest(
         quest.locked_reward = round(santa_base_reward * inflation_mult)
     else:
         # Обычный квест или рулетка
-        if quest.is_roulette and quest.game_list_ids:
+        if specific_game_id and quest.is_roulette:
+            quest.current_rolled_game_id = specific_game_id
+        elif quest.is_roulette and quest.game_list_ids:
             quest.current_rolled_game_id = random.choice(quest.game_list_ids)
         elif quest.is_roulette and not quest.game_list_ids:
             quest.current_rolled_game_id = quest.game_id
@@ -286,12 +308,41 @@ async def take_quest(
     return await get_quest_by_id(session, quest.id)  # type: ignore
 
 
+async def set_quest_challenge(
+    session: AsyncSession,
+    quest_id: int,
+    user_id: int,
+    challenge_id: Optional[int] = None,
+) -> Quest:
+    """Sets optional challenge on quest (or None) and transitions it to IN_PROGRESS."""
+    quest = await get_quest_by_id(session, quest_id)
+    if not quest:
+        raise ValueError(f"Квест #{quest_id} не найден")
+
+    if challenge_id is not None:
+        challenge = await session.get(Challenge, challenge_id)
+        if not challenge:
+            raise ValueError(f"Челлендж #{challenge_id} не найден")
+        quest.challenge_id = challenge_id
+    else:
+        quest.challenge_id = None
+
+    quest.user_id = user_id
+    quest.status = QuestStatus.IN_PROGRESS
+    quest.started_at = datetime.now(timezone.utc)
+
+    await session.commit()
+    await refill_board(session)
+    return await get_quest_by_id(session, quest.id)  # type: ignore
+
+
 async def reroll_quest(
     session: AsyncSession,
     quest_id: int,
     user_id: int,
+    specific_game_id: Optional[int] = None,
 ) -> Quest:
-    """Executes roulette reroll: spends 1 user reroll, increments quest reroll count, picks new game."""
+    """Executes reroll: spends 1 user reroll, increments quest reroll count, picks new game from quest's category."""
     quest = await get_quest_by_id(session, quest_id)
     if not quest:
         raise ValueError(f"Квест #{quest_id} не найден")
@@ -299,22 +350,67 @@ async def reroll_quest(
         raise ValueError(f"Квест #{quest_id} не находится в процессе прохождения (статус: {quest.status.value})")
     if quest.user_id != user_id:
         raise ValueError(f"Квест #{quest_id} закреплен за другим участником")
-    if not quest.is_roulette:
-        raise ValueError("Реролл доступен только для контрактов типа 'Рулетка'")
 
     user = quest.user
     if not user or user.rerolls_left <= 0:
         raise ValueError("У вас нет доступных попыток реролла (rerolls_left = 0)")
 
-    if not quest.game_list_ids:
-        raise ValueError("Список игр для рулетки пуст")
+    # Determine category
+    category = quest.game.category if quest.game else quest.card_type
 
-    available_candidates = [gid for gid in quest.game_list_ids if gid != quest.current_rolled_game_id]
-    if not available_candidates:
-        available_candidates = quest.game_list_ids
+    if specific_game_id:
+        new_game = await session.get(Game, specific_game_id)
+        if not new_game:
+            raise ValueError(f"Игра #{specific_game_id} не найдена")
+    else:
+        # If quest has explicit game_list_ids
+        if quest.game_list_ids:
+            candidates_ids = [gid for gid in quest.game_list_ids if gid != quest.game_id]
+            if not candidates_ids:
+                candidates_ids = quest.game_list_ids
+            rolled_gid = random.choice(candidates_ids)
+            new_game = await session.get(Game, rolled_gid)
+        else:
+            cat_stmt = select(Game).where(Game.category == category)
+            if quest.game_id:
+                diff_stmt = cat_stmt.where(Game.id != quest.game_id)
+                candidates = list((await session.execute(diff_stmt)).scalars().all())
+                if not candidates:
+                    candidates = list((await session.execute(cat_stmt)).scalars().all())
+            else:
+                candidates = list((await session.execute(cat_stmt)).scalars().all())
 
-    new_game_id = random.choice(available_candidates)
-    quest.current_rolled_game_id = new_game_id
+            if not candidates:
+                fallback_stmt = select(Game).where(Game.id != quest.game_id) if quest.game_id else select(Game)
+                candidates = list((await session.execute(fallback_stmt)).scalars().all())
+
+            if not candidates:
+                raise ValueError("Не удалось найти подходящую игру для реролла")
+
+            new_game = random.choice(candidates)
+
+    if not new_game:
+        raise ValueError("Ошибка выбора новой игры для реролла")
+
+    # Calculate locked_reward preserving inflation and special bonuses
+    now = datetime.now(timezone.utc)
+    spawned = quest.spawned_at if quest.spawned_at.tzinfo else quest.spawned_at.replace(tzinfo=timezone.utc)
+    elapsed_seconds = (now - spawned).total_seconds()
+    interval_seconds = settings.INFLATION_INTERVAL_HOURS * 3600
+    intervals = max(0, int(elapsed_seconds // interval_seconds))
+    inflation_mult = 1.0 + settings.INFLATION_RATE_PER_INTERVAL * intervals
+
+    bonus_pct = 0.0
+    if quest.card_type == "SANTA_TOP":
+        bonus_pct = 0.10
+    elif quest.card_type == "SANTA_COAL":
+        bonus_pct = 0.50
+
+    base_reward = round(new_game.reward_points * (1.0 + bonus_pct))
+    quest.locked_reward = round(base_reward * inflation_mult)
+
+    quest.game_id = new_game.id
+    quest.current_rolled_game_id = new_game.id
     quest.reroll_count += 1
     user.rerolls_left -= 1
 
@@ -322,12 +418,14 @@ async def reroll_quest(
     return await get_quest_by_id(session, quest.id)  # type: ignore
 
 
+
 async def complete_quest(
     session: AsyncSession,
     quest_id: int,
     user_id: int,
+    challenge_status: Optional[str] = None,
 ) -> tuple[Quest, int, dict]:
-    """Marks quest as COMPLETED, calculates final points based on locked_reward, reroll penalties, and underdog bonuses."""
+    """Marks quest as COMPLETED, calculates final points based on locked_reward, challenge outcome, reroll penalties, and underdog bonuses."""
     quest = await get_quest_by_id(session, quest_id)
     if not quest:
         raise ValueError(f"Квест #{quest_id} не найден")
@@ -342,24 +440,39 @@ async def complete_quest(
     # 1. Base reward: используем зафиксированную инфляционную награду
     default_base = active_game.reward_points if active_game else 100
     base_points = quest.locked_reward if quest.locked_reward is not None else default_base
-    challenge_mult = quest.challenge.multiplier if quest.challenge else 1.0
+
+    # 2. Challenge multiplier (Success vs Failed)
+    challenge_mult = 1.0
+    if quest.challenge:
+        if challenge_status == "success":
+            challenge_mult = quest.challenge.bonus_multiplier
+            quest.challenge_successful = True
+        elif challenge_status == "failed":
+            challenge_mult = quest.challenge.penalty_multiplier
+            quest.challenge_successful = False
+        else:
+            challenge_mult = quest.challenge.bonus_multiplier
+            quest.challenge_successful = True
+    else:
+        quest.challenge_successful = None
+
     base_reward = base_points * challenge_mult
 
-    # 2. Reroll penalty
+    # 3. Reroll penalty
     reroll_penalty_rate = min(1.0, settings.REROLL_PENALTY_RATE * quest.reroll_count)
     reward_after_reroll = base_reward * (1.0 - reroll_penalty_rate)
 
-    # 3. Underdog bonus: applied AFTER reroll penalty
+    # 4. Underdog bonus: applied AFTER reroll penalty
     user_is_underdog = await is_underdog(session, user)
     if user_is_underdog:
         final_reward = round(reward_after_reroll * settings.UNDERDOG_BONUS_MULTIPLIER)
     else:
         final_reward = round(reward_after_reroll)
 
-    # 4. Update user score
+    # 5. Update user score
     user.total_score += final_reward
 
-    # 5. Reroll regeneration (every N completed quests)
+    # 6. Reroll regeneration (every N completed quests)
     user.quests_since_reroll += 1
     recharged_reroll = False
     if user.quests_since_reroll >= settings.QUESTS_PER_REROLL_RECHARGE:
@@ -367,13 +480,16 @@ async def complete_quest(
         user.rerolls_left += 1
         recharged_reroll = True
 
-    # 6. Update quest status
+    # 7. Update quest status
     quest.status = QuestStatus.COMPLETED
     quest.completed_at = datetime.now(timezone.utc)
 
     details = {
         "base_reward": round(base_reward),
         "locked_reward": quest.locked_reward,
+        "challenge_status": challenge_status,
+        "challenge_successful": quest.challenge_successful,
+        "challenge_multiplier": challenge_mult,
         "reroll_count": quest.reroll_count,
         "reroll_penalty_pct": int(reroll_penalty_rate * 100),
         "is_underdog": user_is_underdog,
@@ -387,6 +503,7 @@ async def complete_quest(
     await session.commit()
     refreshed_quest = await get_quest_by_id(session, quest.id)
     return refreshed_quest, final_reward, details  # type: ignore
+
 
 
 async def drop_quest(

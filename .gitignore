@@ -40,4 +40,15 @@ ENV/
 
 # Database
 *.db
+*.db-shm
+*.db-wal
 *.sqlite3
+
+# Scratch / Tests
+scratch/
+
+# User uploaded avatars (preserve default SVGs)
+static/avatars/*.png
+static/avatars/*.jpg
+static/avatars/*.jpeg
+static/avatars/*.webp

@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     UNDERDOG_BONUS_MULTIPLIER: float = Field(default=1.2, description="Бонус к награде за квест для Андердога (+20%)")
     CHALLENGE_ROLL_COUNT: int = Field(default=3, description="Количество предлагаемых модификаторов при ролле")
 
+    # Roulette / Wheel of Fortune animation settings
+    ROULETTE_OPTIONS_COUNT: int = Field(default=15, description="Сколько всего элементов мелькает в анимации рулетки")
+    ROULETTE_DURATION_SEC: int = Field(default=4, description="Длительность вращения рулетки в секундах")
+
     # External data file paths
     GAMES_DATA_PATH: Path = Field(
         default=BASE_DIR / "data" / "games.json",

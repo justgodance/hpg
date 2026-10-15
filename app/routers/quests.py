@@ -126,12 +126,20 @@ async def reroll_quest_endpoint(
 async def complete_quest_endpoint(
     quest_id: int,
     user_id: int = Query(..., description="ID пользователя, сдающего квест"),
+    challenge_status: str | None = Query(None, description="Статус выполнения челленджа: 'success' или 'failed'"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Завершение квеста: рассчитывает штраф за рероллы (-10%/реролл) и бонус Андердога (+20%), обновляет перезарядку рероллов."""
+    """Завершение квеста: рассчитывает бонус/штраф за челлендж, штраф за рероллы (-10%/реролл) и бонус Андердога (+20%)."""
     try:
-        quest, points_earned, details = await complete_quest(db, quest_id=quest_id, user_id=user_id)
+        quest, points_earned, details = await complete_quest(
+            db, quest_id=quest_id, user_id=user_id, challenge_status=challenge_status
+        )
         msg_parts = [f"Квест успешно сдан! Начислено: +{points_earned} очков."]
+        if details.get("challenge_status"):
+            if details["challenge_status"] == "success":
+                msg_parts.append(f"Челлендж выполнен (множитель x{details['challenge_multiplier']})!")
+            else:
+                msg_parts.append(f"Челлендж провален (штрафной множитель x{details['challenge_multiplier']}).")
         if details["reroll_penalty_pct"] > 0:
             msg_parts.append(f"Штраф за {details['reroll_count']} реролла(ов): -{details['reroll_penalty_pct']}%.")
         if details["underdog_bonus_applied"]:

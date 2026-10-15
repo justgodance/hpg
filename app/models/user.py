@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 from sqlalchemy import Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,6 +14,8 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
+    avatar_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, default=None)
+    pin_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, default=None)
     total_score: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Balance mechanics from config

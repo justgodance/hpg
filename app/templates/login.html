@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вход в систему | Игровой Турнир</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Cinzel:wght@600;700;900&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,600&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Cormorant Garamond"', 'serif'],
+                        serif: ['"Cormorant Garamond"', 'serif'],
+                        heading: ['Cinzel', '"Cormorant Garamond"', 'serif'],
+                        handwriting: ['Caveat', 'cursive'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- HTMX (CDN) -->
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+
+    <style>
+        body {
+            background-color: #080402;
+            background-image: 
+                radial-gradient(circle at 50% 20%, rgba(120, 53, 15, 0.22) 0%, transparent 60%),
+                radial-gradient(circle at 80% 80%, rgba(185, 28, 28, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 20% 80%, rgba(69, 26, 3, 0.3) 0%, transparent 50%);
+            min-height: 100vh;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-6px); }
+            40%, 80% { transform: translateX(6px); }
+        }
+        .shake-anim {
+            animation: shake 0.35s ease-in-out;
+        }
+    </style>
+</head>
+<body class="text-[#f5ebd4] font-sans antialiased flex flex-col justify-between min-h-screen selection:bg-amber-800 selection:text-white p-4 sm:p-8">
+
+    <!-- Верхний колонтитул -->
+    <header class="w-full max-w-md mx-auto flex items-center justify-center py-4">
+        <div class="flex items-center gap-3">
+            <span class="text-4xl filter drop-shadow">🎮</span>
+            <div>
+                <h2 class="text-xl font-heading font-black tracking-widest text-[#fdf4e2] uppercase">
+                    Турнир HPG
+                </h2>
+                <span class="text-xs font-serif italic text-amber-500/90 block">Игровой челлендж-турнир</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Центральный блок: Авторизация по логину и паролю -->
+    <main class="w-full max-w-md mx-auto my-auto py-6">
+        
+        <div class="bg-[#160b05] border-4 border-[#542d17] rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.98)] p-6 sm:p-8 overflow-hidden relative">
+            
+            <!-- Иконка системы -->
+            <div class="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-b from-[#2e170c] to-[#120803] border-2 border-amber-600/70 flex items-center justify-center text-3xl mb-4 shadow-lg ring-1 ring-amber-500/30">
+                🎮
+            </div>
+
+            <!-- Заголовок карточки -->
+            <div class="text-center mb-6 space-y-1">
+                <h1 id="form-title" class="text-2xl sm:text-3xl font-heading font-black text-[#fdf4e2] tracking-wider uppercase drop-shadow">
+                    Вход в систему
+                </h1>
+                <p id="form-subtitle" class="text-xs sm:text-sm font-serif italic text-[#c4a689]">
+                    Укажите имя игрока и пароль для доступа к Доске Квестов
+                </p>
+            </div>
+
+            <!-- Переключатель: Вход / Регистрация -->
+            <div class="grid grid-cols-2 gap-2 p-1 bg-[#100703] rounded-xl border border-[#3e1f0e] mb-6 text-xs font-heading font-bold uppercase tracking-wider">
+                <button type="button" 
+                        id="tab-login-btn"
+                        onclick="switchTab('login')"
+                        class="py-2 rounded-lg bg-gradient-to-b from-amber-700 to-amber-900 text-white shadow font-black transition">
+                    Вход
+                </button>
+                <button type="button" 
+                        id="tab-register-btn"
+                        onclick="switchTab('register')"
+                        class="py-2 rounded-lg text-[#a88a6d] hover:text-amber-300 transition">
+                    Регистрация
+                </button>
+            </div>
+
+            <!-- ======================================================== -->
+            <!-- 1. ФОРМА ВХОДА (Логин + Пароль/ПИН)                      -->
+            <!-- ======================================================== -->
+            <form id="login-form"
+                  hx-post="/login"
+                  hx-target="#login-error"
+                  hx-swap="innerHTML"
+                  class="space-y-4">
+
+                <!-- Поле: Логин (Имя игрока) -->
+                <div>
+                    <label class="block text-xs font-heading font-black uppercase tracking-wider text-amber-300 mb-1.5">
+                        Имя Игрока (Логин):
+                    </label>
+                    <input type="text" 
+                           name="username" 
+                           id="login-username"
+                           list="hunters-list"
+                           placeholder="Например: Влад" 
+                           required 
+                           autofocus
+                           autocomplete="username"
+                           class="w-full py-2.5 px-3.5 rounded-xl bg-black/60 border border-[#5c3018] text-[#f5ebd4] focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-500 text-base">
+                    
+                    <!-- Выпадающий список зарегистрированных игроков для удобства ввода -->
+                    <datalist id="hunters-list">
+                        {% for u in users %}
+                        <option value="{{ u.username }}"></option>
+                        {% endfor %}
+                    </datalist>
+                </div>
+
+                <!-- Поле: Пароль (4-значный ПИН) -->
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="block text-xs font-heading font-black uppercase tracking-wider text-amber-300">
+                            Пароль (ПИН-код):
+                        </label>
+                    </div>
+                    <input type="password" 
+                           name="pin_code" 
+                           id="login-pin"
+                           maxlength="4" 
+                           pattern="\d{4}"
+                           inputmode="numeric"
+                           placeholder="••••" 
+                           required
+                           autocomplete="current-password"
+                           class="w-full py-2.5 px-3.5 rounded-xl bg-black/60 border border-[#5c3018] text-[#f5ebd4] focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-500 text-center font-mono tracking-[0.4em] text-xl">
+                </div>
+
+                <!-- Контейнер для вывода ошибок входа -->
+                <div id="login-error" class="min-h-[24px]"></div>
+
+                <!-- Кнопка отправки -->
+                <button type="submit"
+                        class="w-full py-3.5 px-4 rounded-xl font-heading font-black text-sm uppercase tracking-wider text-[#fcf0db] bg-gradient-to-b from-amber-700 via-amber-800 to-amber-950 hover:from-amber-600 hover:to-amber-900 border border-amber-500 shadow-md active:scale-95 transition cursor-pointer flex items-center justify-center gap-2">
+                    <span>Войти в аккаунт</span>
+                    <span>→</span>
+                </button>
+            </form>
+
+
+            <!-- ======================================================== -->
+            <!-- 2. ФОРМА РЕГИСТРАЦИИ (Для новых участников)              -->
+            <!-- ======================================================== -->
+            <form id="register-form"
+                  hx-post="/register"
+                  hx-target="#register-error"
+                  hx-swap="innerHTML"
+                  class="space-y-4 hidden">
+
+                <div>
+                    <label class="block text-xs font-heading font-black uppercase tracking-wider text-amber-300 mb-1.5">
+                        Имя Игрока:
+                    </label>
+                    <input type="text" 
+                           name="username" 
+                           placeholder="Например: Влад или Алекс" 
+                           required 
+                           minlength="2"
+                           maxlength="50"
+                           class="w-full py-2.5 px-3.5 rounded-xl bg-black/60 border border-[#5c3018] text-[#f5ebd4] focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-500 text-base">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-heading font-black uppercase tracking-wider text-amber-300 mb-1.5">
+                        4-значный ПИН-код (Пароль):
+                    </label>
+                    <input type="password" 
+                           name="pin_code" 
+                           maxlength="4" 
+                           pattern="\d{4}"
+                           inputmode="numeric"
+                           required
+                           placeholder="•••• (ровно 4 цифры)" 
+                           class="w-full py-2.5 px-3.5 rounded-xl bg-black/60 border border-[#5c3018] text-[#f5ebd4] focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-500 text-center font-mono tracking-[0.4em] text-xl">
+                </div>
+
+                <div id="register-error" class="min-h-[24px]"></div>
+
+                <button type="submit"
+                        class="w-full py-3.5 px-4 rounded-xl font-heading font-black text-sm uppercase tracking-wider text-[#fcf0db] bg-gradient-to-b from-amber-700 via-amber-800 to-amber-950 hover:from-amber-600 hover:to-amber-900 border border-amber-500 shadow-md active:scale-95 transition cursor-pointer flex items-center justify-center gap-2">
+                    <span>Зарегистрироваться</span>
+                    <span>✓</span>
+                </button>
+            </form>
+
+        </div>
+
+    </main>
+
+    <!-- Подвал -->
+    <footer class="w-full text-center py-4 text-xs font-serif text-[#785e47]">
+        <span>Турнирный сервер &bull; FastAPI &bull; HTMX &bull; Tailwind CSS</span>
+    </footer>
+
+    <script>
+        function switchTab(tab) {
+            const loginForm = document.getElementById('login-form');
+            const registerForm = document.getElementById('register-form');
+            const loginBtn = document.getElementById('tab-login-btn');
+            const registerBtn = document.getElementById('tab-register-btn');
+            const formTitle = document.getElementById('form-title');
+            const formSubtitle = document.getElementById('form-subtitle');
+
+            document.getElementById('login-error').innerHTML = '';
+            document.getElementById('register-error').innerHTML = '';
+
+            if (tab === 'login') {
+                loginForm.classList.remove('hidden');
+                registerForm.classList.add('hidden');
+                loginBtn.className = 'py-2 rounded-lg bg-gradient-to-b from-amber-700 to-amber-900 text-white shadow font-black transition';
+                registerBtn.className = 'py-2 rounded-lg text-[#a88a6d] hover:text-amber-300 transition';
+                formTitle.textContent = 'Вход в систему';
+                formSubtitle.textContent = 'Укажите имя игрока и пароль для доступа к Доске Квестов';
+                document.getElementById('login-username').focus();
+            } else {
+                loginForm.classList.add('hidden');
+                registerForm.classList.remove('hidden');
+                registerBtn.className = 'py-2 rounded-lg bg-gradient-to-b from-amber-700 to-amber-900 text-white shadow font-black transition';
+                loginBtn.className = 'py-2 rounded-lg text-[#a88a6d] hover:text-amber-300 transition';
+                formTitle.textContent = 'Регистрация игрока';
+                formSubtitle.textContent = 'Укажите имя и 4-значный пароль для создания профиля';
+            }
+        }
+    </script>
+
+</body>
+</html>

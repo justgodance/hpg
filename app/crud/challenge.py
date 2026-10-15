@@ -27,14 +27,24 @@ async def get_challenge_by_id(session: AsyncSession, challenge_id: int) -> Chall
 
 
 async def seed_challenges_if_empty(session: AsyncSession) -> None:
-    """Pre-populates challenges from external challenges.json file if database is empty."""
-    query = select(func.count(Challenge.id))
-    result = await session.execute(query)
-    count = result.scalar() or 0
-    if count == 0:
-        if settings.CHALLENGES_DATA_PATH.exists():
-            with open(settings.CHALLENGES_DATA_PATH, "r", encoding="utf-8") as f:
-                challenges_data = json.load(f)
-            for item in challenges_data:
-                session.add(Challenge(**item))
-            await session.commit()
+    """Pre-populates challenges from external challenges.json file if empty, or syncs multipliers."""
+    if not settings.CHALLENGES_DATA_PATH.exists():
+        return
+    with open(settings.CHALLENGES_DATA_PATH, "r", encoding="utf-8") as f:
+        challenges_data = json.load(f)
+
+    query = select(Challenge)
+    existing = list((await session.execute(query)).scalars().all())
+    if not existing:
+        for item in challenges_data:
+            session.add(Challenge(**item))
+        await session.commit()
+    else:
+        desc_map = {item["description"]: item for item in challenges_data}
+        for ch in existing:
+            if ch.description in desc_map:
+                ch.bonus_multiplier = desc_map[ch.description].get("bonus_multiplier", 1.2)
+                ch.penalty_multiplier = desc_map[ch.description].get("penalty_multiplier", 0.85)
+                ch.multiplier = desc_map[ch.description].get("multiplier", 1.2)
+        await session.commit()
+

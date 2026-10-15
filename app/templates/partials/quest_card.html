@@ -4,160 +4,214 @@
 {% set status_str = quest.status.value if quest.status.value is defined else quest.status|string %}
 {% set is_active = (status_str == 'IN_PROGRESS' or status_str == 'COMPLETED') %}
 
-{# Цветовая дифференциация типов карточек #}
-{% set card_themes = {
-    'STEAM': 'bg-slate-800 border-slate-600 text-slate-100 hover:border-slate-400 shadow-slate-900/50',
-    'PRESET': 'bg-purple-900 border-purple-500 text-purple-100 hover:border-purple-300 shadow-purple-950/50',
-    'SERIES': 'bg-emerald-900 border-emerald-500 text-emerald-100 hover:border-emerald-300 shadow-emerald-950/50',
-    'EMULATOR': 'bg-orange-900 border-orange-500 text-orange-100 hover:border-orange-300 shadow-orange-950/50',
-    'GOTY': 'bg-yellow-600 border-yellow-400 text-yellow-50 shadow-lg shadow-yellow-500/50 hover:border-yellow-200 ring-1 ring-yellow-400/40',
-    'SANTA': 'bg-gradient-to-br from-red-800 via-rose-900 to-emerald-900 border-red-500 text-red-50 shadow-lg shadow-red-500/30 hover:border-emerald-400 ring-1 ring-red-400/50',
-    'SANTA_TOP': 'bg-gradient-to-br from-amber-700 via-yellow-600 to-red-800 border-yellow-300 text-yellow-50 shadow-lg shadow-yellow-500/40',
-    'SANTA_COAL': 'bg-stone-900 border-stone-600 text-stone-200 shadow-stone-950/50'
-} %}
+{# Легкий поворот карточки для эффекта живой доски квестов #}
+{% set rot_classes = ['-rotate-1', 'rotate-1', '-rotate-2', 'rotate-1.5', '-rotate-0.5', 'rotate-2'] %}
+{% set card_rot = rot_classes[quest.id % (rot_classes|length)] %}
 
-{% set card_theme = card_themes.get(card_type_str, 'bg-slate-800 border-slate-600 text-slate-100') %}
-
-{# Стилизация бейджа категории #}
-{% set badge_themes = {
-    'STEAM': 'bg-slate-900/80 text-cyan-300 border-cyan-500/40',
-    'PRESET': 'bg-purple-950/90 text-purple-200 border-purple-400/50',
-    'SERIES': 'bg-emerald-950/90 text-emerald-200 border-emerald-400/50',
-    'EMULATOR': 'bg-orange-950/90 text-orange-200 border-orange-400/50',
-    'GOTY': 'bg-yellow-950/90 text-yellow-200 border-yellow-300/80 animate-pulse',
-    'SANTA': 'bg-red-950/90 text-red-200 border-red-400/70 animate-bounce',
-    'SANTA_TOP': 'bg-amber-950 text-amber-300 border-amber-400',
-    'SANTA_COAL': 'bg-black text-stone-400 border-stone-600'
-} %}
-
-{% set badge_theme = badge_themes.get(card_type_str, 'bg-slate-900 text-slate-300 border-slate-600') %}
-
+{# Расчет награды и проверка инфляции #}
 {% set base_pts = quest.game.reward_points if quest.game else 0 %}
 {% set reward_pts = quest.locked_reward if quest.locked_reward is not none else quest.current_reward %}
 {% set is_inflated = (reward_pts > base_pts and not quest.is_santa_box and card_type_str != 'SANTA' and base_pts > 0) %}
 
+{# Цветовая дифференциация стилей карточек #}
+{% if card_type_str == 'SANTA' or (quest.is_santa_box and not is_active) %}
+    {# Плотный темно-красный конверт с тайной печатью #}
+    {% set paper_bg = "bg-[#4a1010] text-[#fbf0df] border-[#8a2222] shadow-[0_16px_36px_rgba(0,0,0,0.85)]" %}
+    {% set seal_bg = "bg-gradient-to-br from-[#991b1b] via-[#7f1d1d] to-[#450a0a] text-amber-200 border-2 border-red-500 shadow-[0_4px_12px_rgba(153,27,27,0.7)]" %}
+{% elif card_type_str == 'GOTY' %}
+    {# Элитный светлый стиль GOTY с золотой печатью #}
+    {% set paper_bg = "bg-[#faf2de] text-[#221107] border-[#d4af37] shadow-[0_16px_36px_rgba(0,0,0,0.75)] ring-2 ring-amber-400/40" %}
+    {% set seal_bg = "bg-gradient-to-br from-amber-400 via-amber-500 to-amber-700 text-stone-950 border border-yellow-200 shadow-[0_4px_10px_rgba(217,119,6,0.6)]" %}
+{% elif card_type_str == 'SANTA_TOP' %}
+    {# Раскрытый топ-хит от Санты #}
+    {% set paper_bg = "bg-[#fbf3e0] text-[#221107] border-amber-600 shadow-[0_16px_36px_rgba(0,0,0,0.75)] ring-2 ring-amber-500/40" %}
+    {% set seal_bg = "bg-gradient-to-br from-amber-500 to-red-700 text-yellow-100 border border-amber-300 shadow-md" %}
+{% elif card_type_str == 'SANTA_COAL' %}
+    {# Карточка за стойкость #}
+    {% set paper_bg = "bg-[#251e1b] text-[#f2e5db] border-stone-600 shadow-[0_16px_36px_rgba(0,0,0,0.9)]" %}
+    {% set seal_bg = "bg-gradient-to-br from-stone-700 to-stone-950 text-stone-300 border border-stone-600 shadow-md" %}
+{% else %}
+    {# Классический пергаментный стиль #}
+    {% set paper_bg = "bg-[#f4ebd0] text-[#221107] border-[#c8b693] shadow-[0_14px_32px_rgba(0,0,0,0.75)] ring-1 ring-[#bfa980]/50" %}
+    {% set seal_bg = "bg-gradient-to-br from-[#7a482b] via-[#5c341e] to-[#3a2012] text-amber-100 border border-[#a66842] shadow-[0_3px_8px_rgba(0,0,0,0.6)]" %}
+{% endif %}
+
 <div id="quest-card-{{ quest.id }}" 
-     class="quest-card relative flex flex-col justify-between p-4 rounded-2xl border-2 transition-all duration-300 hover:scale-[1.02] hover:-translate-y-0.5 shadow-md {{ card_theme }}">
+     class="quest-card relative flex flex-col justify-between p-5 sm:p-6 rounded-md border-2 transition-all duration-300 {{ card_rot }} hover:rotate-0 hover:-translate-y-1.5 hover:scale-[1.02] hover:z-30 cursor-default {{ paper_bg }}">
 
-    <!-- Верхняя строка карточки: Бейджи и Модификаторы -->
-    <div class="flex items-start justify-between gap-2 mb-3">
-        <!-- Бейдж с названием категории (card_type) -->
-        <span class="px-2.5 py-0.5 rounded-full text-[11px] font-black tracking-wide uppercase border {{ badge_theme }} flex items-center gap-1">
-            {% if card_type_str == 'SANTA' %}🎁{% elif card_type_str == 'GOTY' %}👑{% elif card_type_str == 'EMULATOR' %}🕹️{% elif card_type_str == 'STEAM' %}🎮{% elif card_type_str == 'PRESET' %}📦{% elif card_type_str == 'SERIES' %}📚{% else %}🏷️{% endif %}
-            {{ card_type_str }}
-        </span>
+    <!-- ЭЛЕМЕНТ КРЕПЛЕНИЯ: Кованый железный гвоздь вверху по центру -->
+    <div class="absolute -top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex flex-col items-center">
+        <div class="w-4 h-4 rounded-full bg-gradient-to-br from-stone-400 via-stone-700 to-stone-950 border border-stone-400 shadow-[0_3px_6px_rgba(0,0,0,0.9)] flex items-center justify-center">
+            <div class="w-1.5 h-1.5 rounded-full bg-stone-950 shadow-inner"></div>
+        </div>
+        <!-- Тень от шляпки гвоздя -->
+        <div class="w-3 h-1.5 bg-[#422212]/40 rounded-full blur-[0.5px]"></div>
+    </div>
 
-        <!-- Бейджи модификаторов -->
-        <div class="flex items-center gap-1">
+    <!-- ВЕРХНЯЯ СТРОКА: Категория и модификаторы -->
+    <div class="flex items-start justify-between gap-2 mb-3 pt-1">
+        
+        <!-- Категория с крупным читаемым текстом -->
+        <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-full flex items-center justify-center text-sm font-black {{ seal_bg }} wax-seal-shadow">
+                {% if card_type_str == 'SANTA' or quest.is_santa_box %}🎁
+                {% elif card_type_str == 'GOTY' %}👑
+                {% elif card_type_str == 'EMULATOR' %}🕹️
+                {% elif card_type_str == 'STEAM' %}🎯
+                {% elif card_type_str == 'PRESET' %}📋
+                {% elif card_type_str == 'SERIES' %}📚
+                {% else %}⭐{% endif %}
+            </div>
+            <span class="font-heading font-black text-sm sm:text-base tracking-wider uppercase opacity-95">
+                {% if card_type_str == 'SANTA' %}Секретный Подарок
+                {% elif card_type_str == 'GOTY' %}GOTY Квест
+                {% elif card_type_str == 'STEAM' %}Квест Steam
+                {% elif card_type_str == 'PRESET' %}Пресет
+                {% elif card_type_str == 'SERIES' %}Серия игр
+                {% elif card_type_str == 'EMULATOR' %}Ретро / Эмулятор
+                {% else %}{{ card_type_str }}{% endif %}
+            </span>
+        </div>
+
+        <!-- Дополнительные знаки / Модификаторы с крупными бейджами -->
+        <div class="flex items-center gap-1.5 flex-wrap justify-end">
             {% if quest.is_underdog_only %}
-            <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-rose-950/90 text-rose-300 border border-rose-500/60" title="Доступно только Андердогам">
-                🛡️ Underdog
+            <span class="px-2.5 py-1 rounded text-xs sm:text-sm font-heading font-black uppercase tracking-wider bg-red-950 text-red-200 border border-red-600 shadow-sm" title="Только для отстающих игроков">
+                🔥 Андердог
             </span>
             {% endif %}
+
             {% if quest.is_roulette %}
-            <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-indigo-950/90 text-indigo-300 border border-indigo-500/60" title="Контракт-рулетка с возможностью реролла">
+            <span class="px-2.5 py-1 rounded text-xs sm:text-sm font-heading font-black uppercase tracking-wider bg-[#301c10] text-amber-200 border border-[#784725]" title="Квест-рулетка со случайным выбором">
                 🎲 Рулетка
             </span>
             {% endif %}
+
             {% if quest.challenge %}
-            <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-950/90 text-amber-300 border border-amber-500/60" title="{{ quest.challenge.description }}">
-                ⚡ x{{ quest.challenge.multiplier }}
+            <span class="px-2.5 py-1 rounded text-xs sm:text-sm font-heading font-black uppercase tracking-wider bg-[#26150b] text-yellow-300 border border-amber-600" title="{{ quest.challenge.description }}">
+                ⚡ +{{ ((quest.challenge.bonus_multiplier - 1) * 100)|round|int }}%
             </span>
             {% endif %}
         </div>
     </div>
 
-    <!-- Тело карточки: Условия контракта (на бирже) ИЛИ Раскрытая игра (в работе) -->
-    <div class="flex-1 my-1">
+    <!-- ТЕЛО КАРТОЧКИ: Крупный контрастный текст -->
+    <div class="flex-1 my-2 space-y-2">
         {% if is_active %}
-            {# КОНТРАКТ В РАБОТЕ: Игра раскрыта игроку #}
-            <div class="space-y-1">
-                <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1">
-                    🔓 Контракт раскрыт
-                </span>
-                <h3 class="text-base font-extrabold tracking-tight text-white leading-snug" title="{{ quest.game.title if quest.game else 'Неизвестно' }}">
+            {# КВЕСТ В РАБОТЕ: Игра раскрыта #}
+            <div class="space-y-1.5">
+                <div class="flex items-center gap-1.5 text-xs sm:text-sm font-heading uppercase tracking-wider text-emerald-800 font-black">
+                    <span>🎮</span>
+                    <span>Квест активен &bull; Игра выбрана</span>
+                </div>
+                <h3 class="text-xl sm:text-2xl font-heading font-black tracking-tight leading-snug" title="{{ quest.game.title if quest.game else 'Неизвестно' }}">
                     {{ quest.game.title if quest.game else 'Секретная игра' }}
                 </h3>
-                <div class="text-xs text-slate-300 flex items-center gap-1.5 font-medium">
-                    <span class="text-slate-400">🏷️</span>
-                    <span>{{ quest.game.genre if quest.game else 'Экшен' }}</span>
+                <div class="text-lg sm:text-xl font-handwriting font-bold leading-tight flex items-center gap-1.5">
+                    <span class="opacity-80">Жанр:</span>
+                    <span class="underline decoration-dotted font-extrabold">{{ quest.game.genre if quest.game else 'Экшен' }}</span>
                 </div>
                 {% if card_type_str == 'SANTA_TOP' %}
-                    <span class="inline-block text-[11px] font-bold text-amber-300 bg-amber-950/70 px-2 py-0.5 rounded border border-amber-500/30 mt-1">🌟 Топ от Санты (+10%)</span>
+                    <div class="text-sm sm:text-base font-heading font-bold text-amber-900 bg-amber-200/80 px-2.5 py-1 rounded border border-amber-500/50 mt-1">
+                        🌟 Бонус Санты (+10% к награде)
+                    </div>
                 {% elif card_type_str == 'SANTA_COAL' %}
-                    <span class="inline-block text-[11px] font-bold text-stone-400 bg-stone-900/80 px-2 py-0.5 rounded border border-stone-600/40 mt-1">🔥 Уголёк за стойкость (+50%)</span>
+                    <div class="text-sm sm:text-base font-heading font-bold text-stone-200 bg-stone-900/95 px-2.5 py-1 rounded border border-stone-600 mt-1">
+                        🔥 Уголёк за стойкость (+50% к награде)
+                    </div>
+                {% endif %}
+
+                {% if quest.challenge %}
+                    <div class="text-xs sm:text-sm font-heading font-bold text-amber-200 bg-[#2b170c]/90 px-3 py-1.5 rounded-md border border-amber-600/70 mt-1.5 space-y-0.5">
+                        <div class="text-amber-300 font-black flex items-center gap-1 leading-snug">
+                            <span>⚡</span>
+                            <span>Челлендж: {{ quest.challenge.description }}</span>
+                        </div>
+                        <div class="text-[11px] text-[#e0cfbd] flex items-center justify-between font-sans pt-0.5">
+                            <span class="text-emerald-400 font-extrabold">Успех: +{{ ((quest.challenge.bonus_multiplier - 1) * 100)|round|int }}%</span>
+                            <span class="text-red-400 font-extrabold">Провал: -{{ ((1 - quest.challenge.penalty_multiplier) * 100)|round|int }}%</span>
+                        </div>
+                    </div>
                 {% endif %}
             </div>
 
         {% elif card_type_str == 'SANTA' or quest.is_santa_box %}
-            {# КОНТРАКТ САНТЫ НА БИРЖЕ #}
-            <div class="text-center py-2.5">
-                <div class="text-3xl mb-1 filter drop-shadow">🎁</div>
-                <h3 class="text-base font-black tracking-tight text-white uppercase">
-                    Подарок от Санты
+            {# КОНВЕРТ САНТЫ НА БИРЖЕ #}
+            <div class="text-center py-3 my-1">
+                <div class="inline-block p-3.5 rounded-full bg-gradient-to-br from-red-600 via-red-800 to-rose-950 border-2 border-amber-400 shadow-[0_6px_16px_rgba(0,0,0,0.8)] mb-2">
+                    <span class="text-4xl block filter drop-shadow">🎁</span>
+                </div>
+                <h3 class="text-2xl sm:text-3xl font-heading font-black tracking-wider uppercase text-amber-200 drop-shadow">
+                    Подарок от Всех
                 </h3>
-                <p class="text-xs text-red-200/90 mt-1 italic">
-                    50% шанс на Топ-хит (+10%) или Уголёк (+50%)!
+                <p class="text-lg sm:text-xl font-handwriting italic text-red-100 font-bold mt-1">
+                    «50% шанс на Золотой Шедевр (+10%) или Опасный Уголёк (+50%)»
                 </p>
-                <div class="mt-2 text-[10px] font-bold text-slate-400 flex items-center justify-center gap-1">
+                <div class="mt-2 text-sm sm:text-base font-serif italic text-amber-300 font-bold flex items-center justify-center gap-1">
                     <span>🔒</span>
-                    <span>Раскрывается при взятии</span>
+                    <span>Открывается после вращения рулетки</span>
                 </div>
             </div>
 
         {% else %}
-            {# КОНТРАКТЫ НА БИРЖЕ (STEAM, PRESET, SERIES, EMULATOR, GOTY): Игра скрыта, видны условия #}
-            <div class="space-y-1.5">
-                <!-- Заголовок типа контракта / пресета -->
-                <h3 class="text-base font-black tracking-tight text-white leading-snug">
+            {# КВЕСТЫ НА ДОСКЕ: Условия видны, игра скрыта #}
+            <div class="space-y-2">
+                <h3 class="text-xl sm:text-2xl font-heading font-black tracking-tight leading-snug">
                     {{ quest.display_title }}
                 </h3>
 
-                <!-- Условия: жанр, платформа, серия -->
-                <div class="bg-black/30 p-2 rounded-xl border border-white/5 space-y-1">
-                    <div class="text-xs text-slate-200 font-bold flex items-center gap-1.5">
-                        <span class="text-amber-400">🎯</span>
-                        <span>{{ quest.game.genre if quest.game else 'Разнообразный' }}</span>
+                <!-- Условия с четким высоким контрастом -->
+                <div class="p-3 rounded-lg bg-black/10 border border-black/15 space-y-1.5 font-handwriting text-lg sm:text-xl font-bold">
+                    <div class="flex items-center gap-2">
+                        <span class="text-amber-900">🎯</span>
+                        <span>Жанр игры: {{ quest.game.genre if quest.game else 'Разнообразный' }}</span>
                     </div>
                     {% if quest.game and quest.game.preset_name and card_type_str != 'PRESET' and card_type_str != 'SERIES' and card_type_str != 'EMULATOR' %}
-                    <div class="text-[11px] text-slate-400">
+                    <div class="text-base sm:text-lg text-[#3d2010] italic font-bold">
                         {{ quest.game.preset_name }}
                     </div>
                     {% endif %}
                 </div>
 
-                <!-- Подсказка о скрытой игре -->
-                <div class="text-[10px] font-semibold text-slate-400 flex items-center gap-1 pt-0.5">
+                <div class="text-sm sm:text-base font-serif italic opacity-90 flex items-center gap-1 font-semibold text-[#2c160b]">
                     <span>🔒</span>
-                    <span>Конкретная игра скрыта до взятия</span>
+                    <span>Название игры откроется после выбора квеста</span>
                 </div>
             </div>
         {% endif %}
     </div>
 
-    <!-- Параметры квеста: Часовой диапазон/HLTB и Награда с инфляцией -->
-    <div class="pt-3 mt-2 border-t border-white/10 flex items-center justify-between text-xs">
-        <!-- Время прохождения: Диапазон на бирже, точное в работе -->
-        <div class="flex items-center gap-1 text-slate-300 font-medium" title="{% if is_active %}Точное время прохождения{% else %}Ориентировочный часовой диапазон{% endif %}">
-            <span class="text-slate-400">⏱️</span>
-            <span class="font-bold text-slate-200">{{ quest.display_time }}</span>
+    <!-- ПАРАМЕТРЫ КВЕСТА: Время и Награда в очках -->
+    <div class="pt-3.5 mt-2 border-t-2 border-black/20 flex items-center justify-between text-base">
+        
+        <!-- Время прохождения крупным шрифтом -->
+        <div class="flex items-center gap-1.5 font-handwriting text-lg sm:text-xl font-extrabold" title="{% if is_active %}Точный срок выполнения{% else %}Ориентировочное время прохождения{% endif %}">
+            <span>⏱️</span>
+            <span class="tracking-wide">{{ quest.display_time }}</span>
         </div>
 
-        <!-- Текущая награда (Points) с подсветкой инфляции -->
+        <!-- Награда в очках -->
         <div class="text-right">
             {% if (card_type_str == 'SANTA' or quest.is_santa_box) and not is_active %}
-                <span class="text-xs font-black text-amber-300 tracking-wide">
-                    🎁 Секретные очки
+                <span class="text-base sm:text-lg font-heading font-black text-amber-400 tracking-wider">
+                    🎁 Скрытый куш
                 </span>
             {% else %}
-                <div class="flex items-center gap-1 font-black">
+                <div class="flex items-center gap-1">
                     {% if is_inflated %}
-                        <span class="text-red-400 text-sm flex items-center gap-1 animate-pulse" title="Цена выросла из-за динамической инфляции!">
-                            🔥 {{ reward_pts }} pts
-                        </span>
+                        <!-- Инфляция: красные чернила -->
+                        <div class="flex flex-col items-end">
+                            <span class="text-xs sm:text-sm font-heading font-black text-red-800 uppercase tracking-tight flex items-center gap-0.5">
+                                <span>📈</span>
+                                <span>Награда выросла!</span>
+                            </span>
+                            <span class="text-xl sm:text-2xl font-heading font-black text-[#8f1616] drop-shadow-[0_1px_1px_rgba(153,27,27,0.4)] flex items-center gap-1">
+                                🔥 {{ reward_pts }} очков
+                            </span>
+                        </div>
                     {% else %}
-                        <span class="text-emerald-400 text-sm flex items-center gap-1">
-                            🪙 {{ reward_pts }} pts
+                        <span class="text-lg sm:text-xl font-heading font-black text-[#5c3716] flex items-center gap-1">
+                            <span class="text-amber-600 font-black">★</span> {{ reward_pts }} очков
                         </span>
                     {% endif %}
                 </div>
@@ -165,64 +219,97 @@
         </div>
     </div>
 
-    <!-- Интерактивные кнопки действий (HTMX) -->
-    <div class="mt-4 pt-2">
+    <!-- КНОПКИ ДЕЙСТВИЯ (HTMX): Крупные и контрастные -->
+    <div class="mt-4 pt-1">
         {% if not is_active %}
-            {# Кнопка "Взять контракт": обновляет доску, игра раскрывается в активных #}
+            {# Кнопка взятия квеста / запуск рулетки #}
             {% if card_type_str == 'SANTA' or quest.is_santa_box %}
-            <button hx-post="/quests/{{ quest.id }}/take"
-                    hx-target="closest .quest-card"
-                    hx-swap="outerHTML"
-                    class="w-full py-2 px-3 rounded-xl font-black text-xs uppercase tracking-wider text-slate-950 bg-gradient-to-r from-amber-400 to-yellow-300 hover:from-amber-300 hover:to-yellow-200 active:scale-95 transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 cursor-pointer">
-                <span>Взять контракт</span>
+            <button hx-post="/quests/{{ quest.id }}/take?user_id={{ current_user.id if current_user else 1 }}"
+                    hx-target="#roulette-modal-container"
+                    hx-swap="innerHTML"
+                    class="w-full py-3 px-4 rounded-lg font-heading font-black text-sm sm:text-base uppercase tracking-widest text-[#fcf0db] bg-gradient-to-b from-[#8f1d1d] via-[#751616] to-[#4e0c0c] hover:from-[#a82424] hover:to-[#631010] active:scale-95 transition-all duration-200 border-2 border-[#b83232] shadow-[0_4px_14px_rgba(80,10,10,0.7)] hover:shadow-[0_4px_20px_rgba(180,30,30,0.85)] flex items-center justify-center gap-2 cursor-pointer">
                 <span>🎁</span>
+                <span>ИСПЫТАТЬ СУДЬБУ</span>
             </button>
             {% else %}
-            <button hx-post="/quests/{{ quest.id }}/take"
-                    hx-target="#board-container"
+            <button hx-post="/quests/{{ quest.id }}/take?user_id={{ current_user.id if current_user else 1 }}"
+                    hx-target="#roulette-modal-container"
                     hx-swap="innerHTML"
-                    class="w-full py-2 px-3 rounded-xl font-black text-xs uppercase tracking-wider text-slate-950 bg-gradient-to-r from-amber-400 to-yellow-300 hover:from-amber-300 hover:to-yellow-200 active:scale-95 transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 cursor-pointer">
-                <span>Взять контракт</span>
-                <span>👉</span>
+                    class="w-full py-3 px-4 rounded-lg font-heading font-black text-sm sm:text-base uppercase tracking-widest text-[#fcf0db] bg-gradient-to-b from-[#8f1d1d] via-[#751616] to-[#4e0c0c] hover:from-[#a82424] hover:to-[#631010] active:scale-95 transition-all duration-200 border-2 border-[#b83232] shadow-[0_4px_14px_rgba(80,10,10,0.7)] hover:shadow-[0_4px_20px_rgba(180,30,30,0.85)] flex items-center justify-center gap-2 cursor-pointer">
+                <span>🎲</span>
+                <span>КРУТИТЬ РУЛЕТКУ</span>
             </button>
             {% endif %}
 
         {% else %}
-            {# Кнопки управления контрактом в работе #}
-            <div class="space-y-2">
-                <!-- Указание, кто взял квест в работу -->
-                <div class="text-[11px] font-bold text-amber-300 flex items-center justify-between bg-black/40 px-2.5 py-1 rounded-lg border border-white/5">
-                    <span class="flex items-center gap-1">👤 {{ quest.user.username if quest.user else 'Игрок' }}</span>
-                    <span class="text-emerald-400 text-[10px] uppercase font-black">В работе</span>
+            {# Кнопки управления квестом в исполнении #}
+            <div class="space-y-2.5">
+                <!-- Игрок, взявший квест -->
+                <div class="text-sm sm:text-base font-heading font-black text-[#3d2010] flex items-center justify-between bg-black/15 px-3 py-1.5 rounded border border-black/15">
+                    <span class="flex items-center gap-1.5">👤 {{ quest.user.username if quest.user else 'Игрок' }}</span>
+                    <span class="text-emerald-800 font-black uppercase text-xs sm:text-sm">В процессе</span>
                 </div>
 
-                <!-- Кнопки управления контрактом -->
-                <div class="grid grid-cols-2 gap-1.5">
-                    <button hx-post="/quests/{{ quest.id }}/complete"
-                            hx-target="closest .quest-card"
-                            hx-swap="outerHTML"
-                            class="py-1.5 px-2 rounded-lg font-black text-[11px] text-white bg-emerald-600 hover:bg-emerald-500 active:scale-95 transition-all text-center flex items-center justify-center gap-1 cursor-pointer">
-                        ✅ Сдать
-                    </button>
+                {% if current_user and quest.user_id == current_user.id %}
+                    <!-- Кнопки управления: Сдать квест / Сбросить (доступны только владельцу) -->
+                    <div class="grid grid-cols-2 gap-2.5">
+                        {% if quest.challenge_id %}
+                        <button hx-get="/quests/{{ quest.id }}/completion_modal"
+                                hx-target="#completion-modal-container"
+                                hx-swap="innerHTML"
+                                class="py-2.5 px-3 rounded-lg font-heading font-black text-sm sm:text-base text-amber-100 bg-gradient-to-b from-amber-700 via-amber-800 to-amber-950 hover:from-amber-600 hover:to-amber-900 border-2 border-amber-500 shadow-md active:scale-95 transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer">
+                            ⚖️ Завершить (Челлендж)
+                        </button>
+                        {% else %}
+                        <button hx-post="/quests/{{ quest.id }}/complete"
+                                hx-target="#main-board"
+                                hx-swap="outerHTML"
+                                class="py-2.5 px-3 rounded-lg font-heading font-black text-sm sm:text-base text-white bg-gradient-to-b from-emerald-700 to-emerald-900 hover:from-emerald-600 hover:to-emerald-800 border border-emerald-600 shadow-md active:scale-95 transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer">
+                            ✅ Завершить
+                        </button>
+                        {% endif %}
 
-                    {# Кнопка "Дропнуть": удаляет карточку из активных #}
-                    <button hx-post="/quests/{{ quest.id }}/drop"
-                            hx-target="closest .quest-card"
-                            hx-swap="outerHTML"
-                            hx-confirm="Вы уверены, что хотите сбросить контракт?"
-                            class="py-1.5 px-2 rounded-lg font-black text-[11px] text-white bg-rose-600 hover:bg-rose-500 active:scale-95 transition-all text-center flex items-center justify-center gap-1 cursor-pointer">
-                        ❌ Дропнуть
-                    </button>
-                </div>
+                        <button hx-post="/quests/{{ quest.id }}/drop"
+                                hx-target="#main-board"
+                                hx-swap="outerHTML"
+                                hx-confirm="Сбросить квест? Вы можете потерять бесплатный сброс или очки!"
+                                class="py-2.5 px-3 rounded-lg font-heading font-black text-sm sm:text-base text-white bg-gradient-to-b from-stone-700 to-stone-900 hover:from-stone-600 hover:to-stone-800 border border-stone-600 shadow-md active:scale-95 transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer">
+                            ❌ Сбросить
+                        </button>
+                    </div>
 
-                {# Кнопка "Реролл": если квест поддерживает рулетку #}
-                {% if quest.is_roulette %}
-                <button hx-post="/quests/{{ quest.id }}/reroll"
-                        hx-target="closest .quest-card"
-                        hx-swap="outerHTML"
-                        class="w-full py-1.5 px-2 rounded-lg font-black text-[11px] text-white bg-purple-700 hover:bg-purple-600 active:scale-95 transition-all text-center flex items-center justify-center gap-1 cursor-pointer">
-                    🎲 Реролл
-                </button>
+                    <!-- Реролл игры внутри квеста (доступен только владельцу) -->
+                    {% if current_user and current_user.rerolls_left and current_user.rerolls_left > 0 %}
+                    <button hx-post="/quests/{{ quest.id }}/reroll"
+                            hx-target="#roulette-modal-container"
+                            hx-swap="innerHTML"
+                            class="w-full py-2.5 px-3 rounded-lg font-heading font-black text-sm sm:text-base text-amber-100 bg-gradient-to-b from-[#6b3318] via-[#522410] to-[#341407] hover:from-[#823e1d] hover:to-[#451b0a] border-2 border-amber-600/80 active:scale-95 transition-all text-center flex items-center justify-center gap-2 cursor-pointer shadow-md group">
+                        <span class="group-hover:rotate-180 transition-transform duration-300">🎲</span>
+                        <span>Реролл игры (в запасе: {{ current_user.rerolls_left }})</span>
+                    </button>
+                    {% else %}
+                    <button disabled
+                            class="w-full py-2.5 px-3 rounded-lg font-heading font-black text-sm sm:text-base text-stone-500 bg-[#160c07] border border-stone-800 opacity-60 cursor-not-allowed text-center flex items-center justify-center gap-2 shadow-inner"
+                            title="У вас нет доступных рероллов (0). Выполните 3 квеста, чтобы получить новый реролл!">
+                        <span>🎲</span>
+                        <span>Реролл недоступен (0 рероллов)</span>
+                    </button>
+                    {% endif %}
+
+                    {% if quest.reroll_count and quest.reroll_count > 0 %}
+                    <div class="text-[11px] font-heading text-amber-400 font-bold flex items-center justify-center gap-1 pt-0.5">
+                        <span>🎲 Сделано рероллов: {{ quest.reroll_count }} (-{{ quest.reroll_count * 10 }}% штраф)</span>
+                    </div>
+                    {% endif %}
+
+                {% else %}
+                    <!-- Чужой квест: управление заблокировано -->
+                    <div class="py-2.5 px-3 rounded-lg bg-black/30 border border-amber-900/40 text-center">
+                        <span class="text-xs sm:text-sm font-serif italic text-[#c4ab91] flex items-center justify-center gap-1.5">
+                            <span>🔒</span>
+                            <span>Чужой контракт (управление недоступно)</span>
+                        </span>
+                    </div>
                 {% endif %}
             </div>
         {% endif %}

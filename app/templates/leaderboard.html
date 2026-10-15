@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+
+{% block title %}Таблица Лидеров | Турнир HPG{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-8 py-2">
+
+    <!-- 1. ВЕРХНИЙ БАННЕР ТУРНИРА -->
+    <div class="bg-[#180e08]/95 p-5 sm:p-6 rounded-2xl border-2 border-[#542d17] shadow-[0_10px_30px_rgba(0,0,0,0.85)] flex flex-col sm:flex-row items-center justify-between gap-5">
+        <div class="flex items-center gap-4 text-center sm:text-left">
+            <div class="w-14 h-14 rounded-2xl bg-gradient-to-b from-amber-600 via-amber-800 to-amber-950 text-amber-200 flex items-center justify-center font-bold text-3xl border-2 border-amber-500/80 shadow-[0_0_20px_rgba(245,158,11,0.4)] flex-shrink-0">
+                🏆
+            </div>
+            <div>
+                <div class="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-[#2a160d] border border-[#69381c] text-amber-300 text-xs font-heading font-black tracking-widest uppercase mb-1">
+                    <span>👑 ЗАЛ СЛАВЫ ТУРНИРА</span>
+                </div>
+                <h1 class="text-2xl sm:text-3xl font-heading font-black tracking-wide text-[#fdf4e2] uppercase drop-shadow">
+                    Таблица Лидеров HPG
+                </h1>
+                <p class="text-xs sm:text-sm text-[#ecd7be] font-serif italic mt-0.5">
+                    Текущий турнирный рейтинг, распределение очков и прогресс выполнения квестов
+                </p>
+            </div>
+        </div>
+
+        <!-- Кнопка возврата к Доске Квестов -->
+        <a href="/board" 
+           class="px-5 py-3 rounded-xl font-heading font-black text-sm uppercase tracking-wider text-[#fcf0db] bg-gradient-to-b from-[#8f1d1d] via-[#751616] to-[#4e0c0c] hover:from-[#a82424] hover:to-[#631010] active:scale-95 transition-all duration-200 border-2 border-[#b83232] shadow-[0_4px_16px_rgba(180,30,30,0.6)] flex items-center gap-2 flex-shrink-0">
+            <span>🎯</span>
+            <span>К Доске Квестов</span>
+        </a>
+    </div>
+
+    <!-- 2. ПЬЕДЕСТАЛ ПОЧЁТА (TOP-3 PODIUM) -->
+    {% if leaderboard and leaderboard|length >= 2 %}
+    <div class="bg-[#180e08]/95 p-6 sm:p-8 rounded-2xl border-2 border-[#542d17] shadow-[0_10px_35px_rgba(0,0,0,0.85)]">
+        
+        <div class="text-center mb-6">
+            <h2 class="text-xl sm:text-2xl font-heading font-black uppercase tracking-wider text-amber-300 flex items-center justify-center gap-2 drop-shadow">
+                <span>⚔️</span>
+                <span>Пьедестал Почёта</span>
+                <span>⚔️</span>
+            </h2>
+            <p class="text-xs sm:text-sm text-[#cfb69c] font-serif italic mt-1">
+                Сильнейшие участники текущего игрового сезона
+            </p>
+        </div>
+
+        <!-- Сетка 3-х ступеней пьедестала -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end max-w-4xl mx-auto pt-6 pb-2">
+            
+            <!-- 🥈 2 МЕСТО (СЕРЕБРО) -->
+            {% if top_2 %}
+            <div class="order-2 md:order-1 flex flex-col items-center text-center">
+                <div class="relative mb-3">
+                    <span class="absolute -top-3 -right-2 w-8 h-8 rounded-full bg-stone-300 text-stone-950 font-heading font-black text-sm flex items-center justify-center shadow-lg border-2 border-white z-10">
+                        2
+                    </span>
+                    <div class="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-4 border-stone-300 shadow-[0_0_20px_rgba(214,211,209,0.4)] bg-[#1a0f08]">
+                        <img src="{{ top_2.avatar_url or '/static/avatars/default.svg' }}" alt="{{ top_2.username }}" class="w-full h-full object-cover">
+                    </div>
+                </div>
+
+                <span class="text-xs uppercase font-heading font-black text-stone-300 tracking-wider">Серебро</span>
+                <span class="text-base sm:text-lg font-heading font-black text-[#fdf4e2] block truncate max-w-[200px]">
+                    {{ top_2.username }}
+                </span>
+                <span class="text-base sm:text-lg font-heading font-black text-amber-300 block drop-shadow">
+                    ★ {{ top_2.total_score }} очков
+                </span>
+                {% if top_2.score_gap > 0 %}
+                <span class="text-[11px] font-heading text-red-400 font-bold block mt-0.5">
+                    -{{ top_2.score_gap }} от лидера
+                </span>
+                {% endif %}
+
+                <!-- Ступенька пьедестала -->
+                <div class="w-full h-24 sm:h-28 mt-4 rounded-t-2xl bg-gradient-to-b from-stone-400/25 via-stone-600/20 to-stone-900/40 border-t-4 border-x-2 border-stone-400/60 flex flex-col items-center justify-center text-stone-300 p-2 shadow-inner">
+                    <span class="text-3xl filter drop-shadow">🥈</span>
+                    <span class="text-xs font-heading font-bold uppercase tracking-widest text-stone-300">2 Место</span>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- 🥇 1 МЕСТО (ЗОЛОТО - ЦЕНТР) -->
+            {% if top_1 %}
+            <div class="order-1 md:order-2 flex flex-col items-center text-center -translate-y-2">
+                <div class="relative mb-3">
+                    <!-- Корона чемпиона -->
+                    <span class="text-3xl sm:text-4xl absolute -top-7 left-1/2 -translate-x-1/2 filter drop-shadow animate-bounce">
+                        👑
+                    </span>
+                    <span class="absolute -top-2 -right-2 w-9 h-9 rounded-full bg-gradient-to-br from-yellow-300 to-amber-500 text-stone-950 font-heading font-black text-base flex items-center justify-center shadow-xl border-2 border-amber-200 z-10">
+                        1
+                    </span>
+                    <div class="w-24 h-24 sm:w-32 sm:h-32 rounded-3xl overflow-hidden border-4 border-amber-400 shadow-[0_0_35px_rgba(245,158,11,0.65)] ring-4 ring-amber-500/30 bg-[#1a0f08]">
+                        <img src="{{ top_1.avatar_url or '/static/avatars/default.svg' }}" alt="{{ top_1.username }}" class="w-full h-full object-cover">
+                    </div>
+                </div>
+
+                <div class="inline-flex items-center gap-1 px-3 py-0.5 rounded-full bg-amber-950 border border-amber-500 text-amber-300 text-[11px] font-heading font-black uppercase tracking-wider mb-0.5 shadow-md">
+                    <span>👑 Лидер Сезона</span>
+                </div>
+                <span class="text-lg sm:text-xl font-heading font-black text-[#fff5e3] block truncate max-w-[220px]">
+                    {{ top_1.username }}
+                </span>
+                <span class="text-xl sm:text-2xl font-heading font-black text-amber-300 block drop-shadow-[0_2px_8px_rgba(245,158,11,0.6)]">
+                    ★ {{ top_1.total_score }} очков
+                </span>
+                <span class="text-xs font-serif italic text-emerald-400 font-bold block mt-0.5">
+                    ✓ {{ top_1.completed_quests_count or 0 }} квестов выполнено
+                </span>
+
+                <!-- Самая высокая ступенька пьедестала -->
+                <div class="w-full h-32 sm:h-36 mt-4 rounded-t-2xl bg-gradient-to-b from-amber-500/30 via-amber-700/25 to-stone-900/40 border-t-4 border-x-2 border-amber-500/80 flex flex-col items-center justify-center text-amber-200 p-2 shadow-[inset_0_4px_12px_rgba(245,158,11,0.2)]">
+                    <span class="text-4xl filter drop-shadow">🥇</span>
+                    <span class="text-xs sm:text-sm font-heading font-black uppercase tracking-widest text-amber-300">Чемпион</span>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- 🥉 3 МЕСТО (БРОНЗА) -->
+            {% if top_3 %}
+            <div class="order-3 md:order-3 flex flex-col items-center text-center">
+                <div class="relative mb-3">
+                    <span class="absolute -top-3 -right-2 w-8 h-8 rounded-full bg-amber-800 text-amber-100 font-heading font-black text-sm flex items-center justify-center shadow-lg border-2 border-amber-600 z-10">
+                        3
+                    </span>
+                    <div class="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-4 border-amber-700 shadow-[0_0_20px_rgba(180,83,9,0.4)] bg-[#1a0f08]">
+                        <img src="{{ top_3.avatar_url or '/static/avatars/default.svg' }}" alt="{{ top_3.username }}" class="w-full h-full object-cover">
+                    </div>
+                </div>
+
+                <span class="text-xs uppercase font-heading font-black text-amber-500 tracking-wider">Бронза</span>
+                <span class="text-base sm:text-lg font-heading font-black text-[#fdf4e2] block truncate max-w-[200px]">
+                    {{ top_3.username }}
+                </span>
+                <span class="text-base sm:text-lg font-heading font-black text-amber-300 block drop-shadow">
+                    ★ {{ top_3.total_score }} очков
+                </span>
+                {% if top_3.score_gap > 0 %}
+                <span class="text-[11px] font-heading text-red-400 font-bold block mt-0.5">
+                    -{{ top_3.score_gap }} от лидера
+                </span>
+                {% endif %}
+
+                <!-- Ступенька пьедестала -->
+                <div class="w-full h-20 sm:h-24 mt-4 rounded-t-2xl bg-gradient-to-b from-amber-800/25 via-amber-950/20 to-stone-900/40 border-t-4 border-x-2 border-amber-700/60 flex flex-col items-center justify-center text-amber-300 p-2 shadow-inner">
+                    <span class="text-3xl filter drop-shadow">🥉</span>
+                    <span class="text-xs font-heading font-bold uppercase tracking-widest text-amber-400">3 Место</span>
+                </div>
+            </div>
+            {% endif %}
+
+        </div>
+
+    </div>
+    {% endif %}
+
+    <!-- 3. КАРТОЧКИ ИНФОГРАФИКИ СЕЗОНА -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-5">
+        
+        <div class="bg-[#180e08]/95 p-5 rounded-2xl border-2 border-[#542d17] shadow-lg flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-cyan-950/80 border border-cyan-700 text-cyan-300 text-2xl flex items-center justify-center shadow-inner">
+                👥
+            </div>
+            <div>
+                <span class="text-xs font-heading uppercase font-bold text-[#c7aa8d] tracking-wider block">Участников</span>
+                <span class="text-2xl font-heading font-black text-[#f5ebd4] block">{{ total_players }} игроков</span>
+            </div>
+        </div>
+
+        <div class="bg-[#180e08]/95 p-5 rounded-2xl border-2 border-[#542d17] shadow-lg flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-emerald-950/80 border border-emerald-700 text-emerald-300 text-2xl flex items-center justify-center shadow-inner">
+                🎯
+            </div>
+            <div>
+                <span class="text-xs font-heading uppercase font-bold text-[#c7aa8d] tracking-wider block">Выполнено квестов</span>
+                <span class="text-2xl font-heading font-black text-emerald-300 block">{{ total_completed_all }} заказов</span>
+            </div>
+        </div>
+
+        <div class="bg-[#180e08]/95 p-5 rounded-2xl border-2 border-[#542d17] shadow-lg flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-amber-950/80 border border-amber-700 text-amber-300 text-2xl flex items-center justify-center shadow-inner">
+                ★
+            </div>
+            <div>
+                <span class="text-xs font-heading uppercase font-bold text-[#c7aa8d] tracking-wider block">Всего очков разыграно</span>
+                <span class="text-2xl font-heading font-black text-amber-300 block">★ {{ total_score_all }}</span>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 4. ПОЛНАЯ ТУРНИРНАЯ ТАБЛИЦА -->
+    <div class="bg-[#180e08]/95 rounded-2xl border-2 border-[#542d17] shadow-[0_10px_35px_rgba(0,0,0,0.85)] p-5 sm:p-7 space-y-5">
+        
+        <div class="flex flex-wrap items-center justify-between gap-4 pb-4 border-b-2 border-[#381c0d]">
+            <div class="flex items-center gap-3">
+                <span class="text-2xl">📜</span>
+                <div>
+                    <h2 class="text-xl sm:text-2xl font-heading font-black text-[#f5ebd4] uppercase tracking-wider">
+                        Полный Рейтинг Участников
+                    </h2>
+                    <p class="text-xs sm:text-sm text-[#c7aa8d] font-serif italic">
+                        Подробная турнирная статистика каждого игрока
+                    </p>
+                </div>
+            </div>
+
+            <span class="px-3.5 py-1 rounded-full bg-[#2a160d] text-amber-300 text-xs font-heading font-black uppercase tracking-wider border border-[#6b3a1d]">
+                Всего участников: {{ leaderboard|length }}
+            </span>
+        </div>
+
+        <!-- Список участников -->
+        <div class="space-y-3.5">
+            {% for user in leaderboard %}
+            <div class="p-4 sm:p-5 rounded-2xl border transition-all flex flex-col md:flex-row md:items-center justify-between gap-4 {% if current_user and current_user.id == user.id %}bg-[#2d160c] border-amber-500 shadow-[0_0_20px_rgba(245,158,11,0.3)] ring-2 ring-amber-500/40{% else %}bg-[#130b06] border-[#381d0f] hover:border-[#6b3c1d]{% endif %}">
+                
+                <!-- Левая часть: Место, Аватар, Имя, Бейджи -->
+                <div class="flex items-center gap-4">
+                    
+                    <!-- Бейдж ранга -->
+                    <div class="w-10 h-10 rounded-xl flex items-center justify-center font-heading font-black text-lg flex-shrink-0 shadow-md {% if loop.index == 1 %}bg-amber-500 text-stone-950 border-2 border-yellow-200 shadow-amber-500/40{% elif loop.index == 2 %}bg-stone-300 text-stone-950 border-2 border-stone-100{% elif loop.index == 3 %}bg-amber-800 text-amber-100 border-2 border-amber-600{% else %}bg-[#1e1008] text-[#ab8d6f] border border-[#3e2110]{% endif %}">
+                        {{ loop.index }}
+                    </div>
+
+                    <!-- Аватарка -->
+                    <div class="w-12 h-12 rounded-2xl overflow-hidden border-2 {% if loop.index == 1 %}border-amber-400{% else %}border-[#542d17]{% endif %} bg-[#160b05] flex-shrink-0 shadow">
+                        <img src="{{ user.avatar_url or '/static/avatars/default.svg' }}" alt="{{ user.username }}" class="w-full h-full object-cover">
+                    </div>
+
+                    <!-- Имя игрока и значки -->
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-lg sm:text-xl font-heading font-black {% if current_user and current_user.id == user.id %}text-amber-300{% else %}text-[#fdf4e2]{% endif %}">
+                                {{ user.username }}
+                            </span>
+                            {% if current_user and current_user.id == user.id %}
+                            <span class="px-2 py-0.5 rounded text-[10px] font-heading font-black uppercase bg-amber-500 text-stone-950 shadow">
+                                ВЫ
+                            </span>
+                            {% endif %}
+                        </div>
+
+                        <!-- Дополнительные значки -->
+                        <div class="flex flex-wrap items-center gap-2 mt-1">
+                            {% if loop.index == 1 %}
+                            <span class="text-xs font-heading font-black text-amber-400 uppercase tracking-tighter flex items-center gap-1">
+                                <span>👑</span> <span>Лидер турнира</span>
+                            </span>
+                            {% endif %}
+
+                            {% if user.is_underdog %}
+                            <span class="text-xs font-heading font-black text-red-400 uppercase tracking-tighter flex items-center gap-1">
+                                <span>🔥</span> <span>Андердог (+20% бонус)</span>
+                            </span>
+                            {% endif %}
+
+                            {% if user.score_gap and user.score_gap > 0 %}
+                            <span class="text-xs font-serif text-[#a98f73] italic">
+                                &bull; Отставание: -{{ user.score_gap }} очков
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Правая часть: Статистика, Квесты, Ресурсы и Очки -->
+                <div class="flex flex-wrap items-center justify-between md:justify-end gap-5 pt-3 md:pt-0 border-t md:border-t-0 border-[#2f180c]">
+                    
+                    <!-- Выполненные квесты -->
+                    <div class="flex flex-col items-center sm:items-end">
+                        <span class="text-[11px] font-heading font-bold text-[#b5997e] uppercase tracking-wider">Квесты</span>
+                        <div class="flex items-center gap-2 text-xs font-heading font-black mt-0.5">
+                            <span class="text-emerald-400">✓ {{ user.completed_quests_count or 0 }}</span>
+                            <span class="text-stone-500">•</span>
+                            <span class="text-cyan-400">⏳ {{ user.in_progress_quests_count or 0 }}</span>
+                        </div>
+                    </div>
+
+                    <!-- Ресурсы игрока -->
+                    <div class="flex flex-col items-center sm:items-end">
+                        <span class="text-[11px] font-heading font-bold text-[#b5997e] uppercase tracking-wider">Ресурсы</span>
+                        <div class="flex items-center gap-2 text-xs font-heading font-bold mt-0.5 text-[#e0cfbe]">
+                            <span title="Бесплатные сбросы">🛡️ {{ user.free_drops }}</span>
+                            <span class="text-stone-500">•</span>
+                            <span title="Рероллы">🎲 {{ user.rerolls_left }}</span>
+                        </div>
+                    </div>
+
+                    <!-- Общий счёт (крупно) -->
+                    <div class="text-right pl-3 border-l-2 border-[#381c0d]">
+                        <span class="text-[11px] font-heading font-bold text-[#cbb39b] uppercase block">Всего очков</span>
+                        <span class="text-xl sm:text-2xl font-heading font-black text-amber-300 block drop-shadow">
+                            <span class="text-amber-400">★</span> {{ user.total_score }}
+                        </span>
+                    </div>
+
+                </div>
+
+            </div>
+            {% endfor %}
+        </div>
+
+    </div>
+
+</div>
+{% endblock %}

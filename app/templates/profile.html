@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block title %}Личный Кабинет | {{ user.username }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-8 py-4">
+
+    <!-- Верхняя навигация Личного Кабинета -->
+    <div class="flex flex-wrap items-center justify-between gap-4 bg-[#180e08]/95 p-4 sm:p-5 rounded-2xl border-2 border-[#542d17] shadow-[0_8px_24px_rgba(0,0,0,0.8)]">
+        <div class="flex items-center gap-3">
+            <span class="text-3xl">🎮</span>
+            <div>
+                <h1 class="text-xl sm:text-2xl font-heading font-black tracking-wider text-[#f5ebd4] uppercase drop-shadow">
+                    Личный Кабинет Игрока
+                </h1>
+                <p class="text-xs sm:text-sm font-serif italic text-amber-500/90">
+                    Управление профилем и статистика турнира
+                </p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 sm:gap-3">
+            <a href="/board" class="px-3.5 py-2 rounded-xl bg-[#2e170c] hover:bg-[#422212] border border-[#6b3c1d] text-xs sm:text-sm font-heading font-black text-amber-300 hover:text-white transition flex items-center gap-1.5 shadow">
+                <span>←</span> <span>К Доске Квестов</span>
+            </a>
+            <a href="/logout" class="px-3.5 py-2 rounded-xl bg-red-950/80 hover:bg-red-900 border border-red-700/80 text-xs sm:text-sm font-heading font-bold text-red-200 hover:text-white transition flex items-center gap-1.5 shadow" title="Выйти из аккаунта">
+                <span>🚪</span> <span>Выйти</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Основная сетка: Аватарка + Статистика -->
+    <div class="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
+        
+        <!-- ЛЕВАЯ КОЛОНКА: Загрузка аватарки -->
+        <div class="md:col-span-5 space-y-6">
+            <div class="bg-[#180e08]/95 p-6 rounded-2xl border-2 border-[#542d17] shadow-[0_8px_24px_rgba(0,0,0,0.8)] text-center space-y-5">
+                
+                <h2 class="text-lg font-heading font-black text-[#ebdcc8] uppercase tracking-wider pb-2 border-b border-[#381d0f]">
+                    Аватар Игрока
+                </h2>
+
+                <!-- Контейнер для отображения текущей аватарки (HTMX target) -->
+                <div class="relative w-44 h-44 sm:w-52 sm:h-52 mx-auto rounded-3xl overflow-hidden border-4 border-amber-600/80 shadow-[0_0_35px_rgba(245,158,11,0.25)] bg-[#120904] flex items-center justify-center group">
+                    <div id="avatar-container" class="w-full h-full relative">
+                        <img id="avatar-preview-img"
+                             src="{{ user.avatar_url or '/static/avatars/default.svg' }}" 
+                             alt="{{ user.username }}" 
+                             class="w-full h-full object-cover">
+                    </div>
+                </div>
+
+                <p class="text-xs font-serif italic text-[#c4a689]">
+                    Загрузите свой аватар (JPG, PNG или WEBP). Изображение будет сохранено на сервере и отобразится на Доске и в Таблице Лидеров.
+                </p>
+
+                <!-- ФОРМА ЗАГРУЗКИ АВАТАРКИ (FastAPI + HTMX) -->
+                <form hx-post="/profile/avatar" 
+                      hx-encoding="multipart/form-data" 
+                      hx-target="#avatar-container" 
+                      hx-swap="innerHTML"
+                      hx-indicator="#upload-spinner"
+                      class="space-y-4 pt-1">
+                    
+                    <div class="relative">
+                        <input type="file" 
+                               name="file" 
+                               id="avatar-file-input"
+                               accept="image/png, image/jpeg, image/webp" 
+                               required
+                               onchange="previewSelectedAvatar(this)"
+                               class="block w-full text-xs text-[#cfb79f] file:mr-3 file:py-2.5 file:px-4 file:rounded-xl file:border file:border-amber-600/60 file:text-xs file:font-heading file:font-black file:uppercase file:bg-[#2d160c] file:text-amber-300 hover:file:bg-[#3f2012] file:cursor-pointer cursor-pointer bg-black/40 rounded-xl p-1.5 border border-[#4d2815] focus:outline-none">
+                    </div>
+
+                    <!-- Индикатор загрузки -->
+                    <div id="upload-spinner" class="htmx-indicator flex items-center justify-center gap-2 text-xs font-heading font-bold text-amber-300 py-1">
+                        <span class="animate-spin text-base">⏳</span>
+                        <span>Сохраняем аватарку...</span>
+                    </div>
+
+                    <button type="submit" 
+                            class="w-full py-3 px-5 rounded-xl font-heading font-black text-sm uppercase tracking-wider text-[#fcf0db] bg-gradient-to-b from-amber-700 via-amber-800 to-amber-950 hover:from-amber-600 hover:to-amber-900 border border-amber-500 shadow-md active:scale-95 transition cursor-pointer flex items-center justify-center gap-2">
+                        <span>📷</span>
+                        <span>Загрузить аватарку</span>
+                    </button>
+                </form>
+
+            </div>
+        </div>
+
+        <!-- ПРАВАЯ КОЛОНКА: Статистика игрока + Активный квест -->
+        <div class="md:col-span-7 space-y-6">
+            
+            <!-- Карточка участника -->
+            <div class="bg-[#180e08]/95 p-6 rounded-2xl border-2 border-[#542d17] shadow-[0_8px_24px_rgba(0,0,0,0.8)] space-y-5">
+                <div class="flex items-center justify-between pb-3 border-b border-[#381d0f]">
+                    <div>
+                        <span class="text-xs font-heading font-bold text-[#a88a6d] uppercase tracking-wider block">Игрок Турнира</span>
+                        <h2 class="text-2xl font-heading font-black text-[#fdf4e2] tracking-wide">
+                            {{ user.username }}
+                        </h2>
+                    </div>
+                    {% if user.is_underdog %}
+                    <span class="px-3 py-1 text-xs font-heading font-black uppercase tracking-wider rounded bg-red-950 text-red-200 border border-red-600 shadow-[0_0_12px_rgba(220,38,38,0.5)] animate-pulse">
+                        🔥 Андердог (+20%)
+                    </span>
+                    {% endif %}
+                </div>
+
+                <!-- Статистика игрока -->
+                <div class="grid grid-cols-3 gap-3">
+                    <div class="bg-[#120904] p-3.5 rounded-xl border border-[#3e1f0e] text-center">
+                        <span class="text-xs font-heading font-bold text-[#b5987d] uppercase tracking-wider block mb-1">Набранные очки</span>
+                        <span class="text-2xl font-heading font-black text-amber-300 flex items-center justify-center gap-1.5 drop-shadow">
+                            <span class="text-amber-400">★</span> {{ user.total_score }}
+                        </span>
+                    </div>
+
+                    <div class="bg-[#120904] p-3.5 rounded-xl border border-[#3e1f0e] text-center" title="Бесплатные сбросы квестов">
+                        <span class="text-xs font-heading font-bold text-[#b5987d] uppercase tracking-wider block mb-1">Сбросы</span>
+                        <span class="text-2xl font-heading font-black text-cyan-300 flex items-center justify-center gap-1">
+                            🛡️ {{ user.free_drops }}
+                        </span>
+                    </div>
+
+                    <div class="bg-[#120904] p-3.5 rounded-xl border border-[#3e1f0e] text-center" title="Попытки перебросить рулетку игр">
+                        <span class="text-xs font-heading font-bold text-[#b5987d] uppercase tracking-wider block mb-1">Рероллы</span>
+                        <span class="text-2xl font-heading font-black text-amber-400 flex items-center justify-center gap-1">
+                            🎲 {{ user.rerolls_left }}
+                        </span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Блок: Квест в работе -->
+            <div class="bg-[#180e08]/95 p-6 rounded-2xl border-2 border-[#542d17] shadow-[0_8px_24px_rgba(0,0,0,0.8)] space-y-4">
+                <div class="flex items-center justify-between pb-2 border-b border-[#381d0f]">
+                    <h3 class="text-base font-heading font-black text-[#ebdcc8] uppercase tracking-wider flex items-center gap-2">
+                        <span>🎯</span>
+                        <span>Текущий активный квест</span>
+                    </h3>
+                </div>
+
+                {% if active_quest %}
+                <div class="p-4 rounded-xl bg-[#221208] border border-amber-600/40 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-lg font-heading font-black text-amber-300">
+                            {{ active_quest.game.title if active_quest.game else "Секретный квест" }}
+                        </span>
+                        <span class="px-2.5 py-0.5 rounded bg-emerald-950 text-emerald-300 font-heading font-black text-xs border border-emerald-700 flex items-center gap-1">
+                            <span class="text-amber-400">★</span> +{{ active_quest.locked_reward }} очков
+                        </span>
+                    </div>
+
+                    {% if active_quest.challenge %}
+                    <div class="p-2.5 rounded bg-black/50 border border-amber-900/60 text-xs text-[#ddcbb4]">
+                        <span class="font-bold text-amber-300 uppercase">Челлендж:</span> {{ active_quest.challenge.description }}
+                        <div class="mt-1 flex items-center gap-3 text-[11px] font-mono">
+                            <span class="text-emerald-400">Успех: x{{ active_quest.challenge.bonus_multiplier }}</span>
+                            <span class="text-rose-400">Провал: x{{ active_quest.challenge.penalty_multiplier }}</span>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <div class="pt-2 flex justify-end">
+                        <a href="/board" class="px-4 py-2 rounded-lg bg-amber-700 hover:bg-amber-600 text-white font-heading font-bold text-xs uppercase tracking-wider transition">
+                            Перейти к квесту на Доске →
+                        </a>
+                    </div>
+                </div>
+                {% else %}
+                <div class="py-6 text-center text-sm font-serif italic text-[#c4a689] bg-[#120904] rounded-xl border border-[#3e1f0e]">
+                    У вас сейчас нет активного квеста.
+                    <div class="mt-2">
+                        <a href="/board" class="text-amber-400 hover:text-amber-300 underline font-heading font-bold not-italic text-xs uppercase">
+                            Выбрать квест на Доске →
+                        </a>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+    // Клиентский превью выбранного файла перед отправкой
+    function previewSelectedAvatar(input) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = document.getElementById('avatar-preview-img');
+                if (img) {
+                    img.src = e.target.result;
+                }
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+</script>
+{% endblock %}

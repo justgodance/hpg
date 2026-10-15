@@ -1,0 +1,84 @@
+{# templates/partials/board_content.html #}
+
+<div id="main-board" class="space-y-8">
+
+    <!-- Двухколоночный макет страницы -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+
+        <!-- ======================================================== -->
+        <!-- 1. ЛЕВАЯ КОЛОНКА: ДОСКА КВЕСТОВ                            -->
+        <!-- ======================================================== -->
+        <section class="lg:col-span-8 space-y-5">
+            
+            <!-- Заголовок Доски в рамке с крупным читаемым текстом -->
+            <div class="bg-[#180e08]/95 p-5 rounded-xl border-2 border-[#542d17] shadow-[0_8px_24px_rgba(0,0,0,0.8)] flex items-center justify-between gap-4">
+                <div class="flex items-center gap-3.5">
+                    <div class="w-12 h-12 rounded-xl bg-[#2e170c] text-amber-300 flex items-center justify-center font-bold text-2xl border-2 border-[#6b3819] shadow-inner">
+                        🎯
+                    </div>
+                    <div>
+                        <h2 class="text-xl sm:text-2xl font-heading font-black tracking-wider text-[#f5ebd4] uppercase flex items-center gap-2.5 drop-shadow">
+                            Доска Квестов
+                            <span class="px-3 py-0.5 text-sm sm:text-base rounded font-heading font-black bg-[#2d160c] text-amber-300 border border-[#783e1c]">
+                                {{ available_quests|length }}/12
+                            </span>
+                        </h2>
+                        <p class="text-sm sm:text-base text-[#dbcaa8] font-serif italic mt-0.5">Список доступных квестов турнира. Залежавшиеся квесты растут в награде (инфляция)</p>
+                    </div>
+                </div>
+
+                <!-- Рычаг пополнения конвейера -->
+                <button hx-post="/quests/refill-board"
+                        hx-target="#board-container"
+                        hx-swap="innerHTML"
+                        class="px-4 py-2.5 rounded-lg bg-gradient-to-b from-[#3a1d10] to-[#241107] hover:from-[#4d2817] hover:to-[#2e160a] text-[#f7ead2] hover:text-white text-sm sm:text-base font-heading font-black border border-[#69391d] transition-all flex items-center gap-2 active:scale-95 cursor-pointer shadow-md">
+                    <span class="text-base">🔄</span>
+                    <span>Обновить квесты</span>
+                </button>
+            </div>
+
+            <!-- Сетка доступных карточек квестов на доске (максимум 12) с HTMX-поллингом -->
+            <div id="board-container" hx-get="/board/items" hx-trigger="every 10s" hx-swap="innerHTML" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 pt-2">
+                {% include 'partials/board_grid.html' %}
+            </div>
+
+        </section>
+
+        <!-- ================================================================== -->
+        <!-- 2. ПРАВАЯ КОЛОНКА: АКТИВНЫЕ КВЕСТЫ (IN_PROGRESS)                   -->
+        <!-- ================================================================== -->
+        <aside class="lg:col-span-4 space-y-6">
+
+            <!-- БЛОК 1: Квесты в процессе (IN_PROGRESS) -->
+            <div class="bg-[#180e08]/95 rounded-2xl border-2 border-[#542d17] p-5 sm:p-6 shadow-[0_8px_24px_rgba(0,0,0,0.8)] space-y-4">
+                <div class="flex items-center justify-between pb-3.5 border-b-2 border-[#381c0d]">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-lg bg-emerald-950 text-emerald-300 flex items-center justify-center text-xl border border-emerald-700 shadow-inner">
+                            ⏳
+                        </div>
+                        <h2 class="text-lg font-heading font-black text-[#f5ebd4] uppercase tracking-wider">
+                            В Процессе
+                        </h2>
+                    </div>
+                    <span class="px-3 py-1 text-sm font-heading font-black rounded bg-emerald-950 text-emerald-300 border border-emerald-700">
+                        {{ in_progress_quests|length }}
+                    </span>
+                </div>
+
+                <!-- Контейнер активных квестов -->
+                <div id="active-quests-container" class="space-y-4">
+                    {% for quest in in_progress_quests %}
+                        {% include "partials/quest_card.html" %}
+                    {% else %}
+                        <div class="py-10 text-center text-base font-serif italic text-[#d4bca4] bg-[#120a05]/80 rounded-xl border border-[#3d1f0f] px-4 leading-relaxed">
+                            Сейчас нет активных квестов.<br>Выберите квест на доске слева!
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+        </aside>
+
+    </div>
+
+</div>

@@ -1,0 +1,16 @@
+{# templates/partials/board_grid.html #}
+{% for quest in available_quests %}
+    {% include "partials/quest_card.html" %}
+{% else %}
+    <div class="col-span-full py-16 text-center rounded-xl border-2 border-dashed border-[#542d17] bg-[#1a0e08]/90 shadow-inner p-6">
+        <span class="text-5xl block mb-3">📭</span>
+        <h3 class="text-2xl font-heading font-black text-[#ebdcc8]">На доске нет доступных квестов</h3>
+        <p class="text-base sm:text-lg text-[#baa085] font-serif italic mt-1.5">Список доступных квестов пуст</p>
+        <button hx-post="/quests/refill-board" 
+                hx-target="#board-container" 
+                hx-swap="innerHTML" 
+                class="mt-5 px-6 py-3 rounded-xl bg-gradient-to-b from-[#8a1d1d] to-[#591010] text-[#fbf0df] font-heading font-black text-sm sm:text-base uppercase hover:from-[#a82424] hover:to-[#6b1414] border-2 border-[#a62a2a] cursor-pointer shadow-xl active:scale-95 transition-all">
+            Пополнить доску до 12 квестов
+        </button>
+    </div>
+{% endfor %}
