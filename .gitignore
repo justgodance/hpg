@@ -52,3 +52,8 @@ static/avatars/*.png
 static/avatars/*.jpg
 static/avatars/*.jpeg
 static/avatars/*.webp
+
+# Parser large data dumps
+parser/output/*.jsonl
+parser/output/*.csv
+parser/data/*.db*

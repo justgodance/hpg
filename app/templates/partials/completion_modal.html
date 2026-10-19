@@ -5,10 +5,10 @@
 {% set fail_points = (locked * challenge.penalty_multiplier)|round|int %}
 
 <div id="completion-modal" 
-     class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 transition-all duration-300">
+     class="modal-open fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 overflow-y-auto transition-all duration-300">
 
     <!-- Корпус Модального Окна Завершения Квеста -->
-    <div class="relative w-full max-w-lg bg-[#180e08] border-4 border-[#542d17] rounded-2xl shadow-[0_25px_70px_rgba(0,0,0,0.98)] p-6 sm:p-8 flex flex-col items-center text-center overflow-hidden"
+    <div class="relative w-full max-w-lg my-auto max-h-[92vh] overflow-y-auto bg-[#180e08] border-4 border-[#542d17] rounded-2xl shadow-[0_25px_70px_rgba(0,0,0,0.98)] p-6 sm:p-8 flex flex-col items-center text-center"
          onclick="event.stopPropagation()">
         
         <!-- Железные заклепки по углам ларца -->
@@ -38,6 +38,11 @@
 
         <!-- КАРТОЧКА КВЕСТА И ЧЕЛЛЕНДЖА -->
         <div class="w-full p-4 sm:p-5 rounded-xl bg-[#29160c]/95 border-2 border-amber-600/70 shadow-lg text-left space-y-3 mb-5">
+            {% if quest.game and quest.game.image_url %}
+            <div class="w-full h-24 sm:h-28 rounded-lg overflow-hidden border border-amber-500/40 mb-2 shadow-inner">
+                <img src="{{ quest.game.image_url }}" alt="{{ quest.game.title }}" class="w-full h-full object-cover">
+            </div>
+            {% endif %}
             <div class="flex items-center justify-between border-b border-[#4d2815] pb-2">
                 <div>
                     <span class="text-xs font-heading font-black uppercase text-amber-400 block tracking-wider">

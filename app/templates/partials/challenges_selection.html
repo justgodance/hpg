@@ -1,10 +1,10 @@
 {# templates/partials/challenges_selection.html #}
 
 <div id="challenges-modal" 
-     class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 transition-all duration-300">
+     class="modal-open fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 overflow-y-auto transition-all duration-300">
 
     <!-- Корпус Модального Окна -->
-    <div class="relative w-full max-w-3xl bg-[#180e08] border-4 border-[#542d17] rounded-2xl shadow-[0_25px_70px_rgba(0,0,0,0.98)] p-6 sm:p-8 flex flex-col items-center text-center overflow-hidden"
+    <div class="relative w-full max-w-3xl my-auto max-h-[92vh] overflow-y-auto bg-[#180e08] border-4 border-[#542d17] rounded-2xl shadow-[0_25px_70px_rgba(0,0,0,0.98)] p-6 sm:p-8 flex flex-col items-center text-center"
          onclick="event.stopPropagation()">
         
         <!-- Железные заклепки по углам ларца -->
@@ -12,12 +12,13 @@
         <span class="absolute bottom-3 left-3 w-3.5 h-3.5 rounded-full bg-gradient-to-br from-stone-400 to-stone-800 border border-stone-600 shadow"></span>
         <span class="absolute bottom-3 right-3 w-3.5 h-3.5 rounded-full bg-gradient-to-br from-stone-400 to-stone-800 border border-stone-600 shadow"></span>
 
-        <!-- Кнопка быстрого закрытия модалки -->
+        <!-- Кнопка быстрого закрытия модалки (игра уже закреплена в активном слоте) -->
         <button hx-get="/board"
                 hx-target="#main-board"
                 hx-swap="outerHTML"
+                onclick="document.getElementById('challenges-modal').remove()"
                 class="absolute top-3 right-3 w-8 h-8 rounded-full bg-[#2a160d] border border-[#6b3a1d] text-[#e0cfbe] hover:text-white hover:border-amber-500 hover:bg-[#3d2013] text-lg font-black flex items-center justify-center transition-all cursor-pointer z-30 shadow"
-                title="Отказаться и закрыть">
+                title="Свернуть окно (контракт останется в вашем активном слоте)">
             ✕
         </button>
 

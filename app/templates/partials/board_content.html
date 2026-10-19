@@ -37,8 +37,8 @@
                 </button>
             </div>
 
-            <!-- Сетка доступных карточек квестов на доске (максимум 12) с HTMX-поллингом -->
-            <div id="board-container" hx-get="/board/items" hx-trigger="every 10s" hx-swap="innerHTML" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 pt-2">
+            <!-- Сетка доступных карточек квестов на доске (максимум 12) с HTMX-поллингом (пауза при открытых модалках) -->
+            <div id="board-container" hx-get="/board/items" hx-trigger="every 10s [!document.querySelector('.modal-open')]" hx-swap="innerHTML" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 pt-2">
                 {% include 'partials/board_grid.html' %}
             </div>
 
@@ -65,15 +65,45 @@
                     </span>
                 </div>
 
-                <!-- Контейнер активных квестов -->
+                <!-- Контейнер активных квестов (квесты игрока всегда выводятся первыми) -->
                 <div id="active-quests-container" class="space-y-4">
-                    {% for quest in in_progress_quests %}
-                        {% include "partials/quest_card.html" %}
-                    {% else %}
+                    {% if user_active_quests %}
+                        <!-- Секция: Активный квест текущего игрока -->
+                        <div class="flex items-center justify-between pb-0.5 text-xs font-heading font-black text-amber-300 uppercase tracking-wider">
+                            <span class="flex items-center gap-1.5">
+                                <span>⚔️</span>
+                                <span>Ваш активный квест</span>
+                            </span>
+                            <span class="px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-600/70 text-[11px] font-mono">
+                                {{ user_active_quests|length }}/{{ max_active_quests|default(1) }}
+                            </span>
+                        </div>
+                        {% for quest in user_active_quests %}
+                            {% include "partials/quest_card.html" %}
+                        {% endfor %}
+                    {% endif %}
+
+                    {% if other_active_quests %}
+                        <!-- Секция: Квесты других игроков -->
+                        <div class="flex items-center justify-between pt-2 pb-0.5 {% if user_active_quests %}border-t-2 border-[#381c0d] mt-2{% endif %} text-xs font-heading font-black text-[#a88a6d] uppercase tracking-wider">
+                            <span class="flex items-center gap-1.5">
+                                <span>👥</span>
+                                <span>Квесты соперников</span>
+                            </span>
+                            <span class="px-2 py-0.5 rounded bg-black/40 text-stone-300 border border-stone-700/60 text-[11px] font-mono">
+                                {{ other_active_quests|length }}
+                            </span>
+                        </div>
+                        {% for quest in other_active_quests %}
+                            {% include "partials/quest_card.html" %}
+                        {% endfor %}
+                    {% endif %}
+
+                    {% if not in_progress_quests %}
                         <div class="py-10 text-center text-base font-serif italic text-[#d4bca4] bg-[#120a05]/80 rounded-xl border border-[#3d1f0f] px-4 leading-relaxed">
                             Сейчас нет активных квестов.<br>Выберите квест на доске слева!
                         </div>
-                    {% endfor %}
+                    {% endif %}
                 </div>
             </div>
 

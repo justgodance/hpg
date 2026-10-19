@@ -42,6 +42,9 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_maker() as session:
         try:
             yield session
+        except Exception:
+            await session.rollback()
+            raise
         finally:
             await session.close()
 
@@ -68,6 +71,16 @@ async def init_db() -> None:
                 quest_cols = [r[1] for r in res_quest]
                 if "challenge_successful" not in quest_cols:
                     connection.exec_driver_sql("ALTER TABLE quests ADD COLUMN challenge_successful BOOLEAN DEFAULT NULL")
+                if "card_title" not in quest_cols:
+                    connection.exec_driver_sql("ALTER TABLE quests ADD COLUMN card_title VARCHAR(200) DEFAULT NULL")
+                if "tag_filter" not in quest_cols:
+                    connection.exec_driver_sql("ALTER TABLE quests ADD COLUMN tag_filter VARCHAR(100) DEFAULT NULL")
+                if "min_hltb_hours" not in quest_cols:
+                    connection.exec_driver_sql("ALTER TABLE quests ADD COLUMN min_hltb_hours FLOAT DEFAULT NULL")
+                if "max_hltb_hours" not in quest_cols:
+                    connection.exec_driver_sql("ALTER TABLE quests ADD COLUMN max_hltb_hours FLOAT DEFAULT NULL")
+                if "min_rating" not in quest_cols:
+                    connection.exec_driver_sql("ALTER TABLE quests ADD COLUMN min_rating FLOAT DEFAULT NULL")
 
                 # 3. Users table
                 res_user = connection.exec_driver_sql("PRAGMA table_info(users)").fetchall()
@@ -76,6 +89,28 @@ async def init_db() -> None:
                     connection.exec_driver_sql("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(255) DEFAULT NULL")
                 if "pin_code" not in user_cols:
                     connection.exec_driver_sql("ALTER TABLE users ADD COLUMN pin_code VARCHAR(10) DEFAULT NULL")
+
+                # 4. Games table (Rich metadata from Steam/HLTB Parser)
+                res_games = connection.exec_driver_sql("PRAGMA table_info(games)").fetchall()
+                game_cols = [r[1] for r in res_games]
+                new_game_fields = [
+                    ("steam_appid", "INTEGER DEFAULT NULL"),
+                    ("image_url", "VARCHAR(500) DEFAULT NULL"),
+                    ("developer", "VARCHAR(200) DEFAULT NULL"),
+                    ("tags", "JSON DEFAULT NULL"),
+                    ("review_percentage", "FLOAT DEFAULT NULL"),
+                    ("review_count", "INTEGER DEFAULT NULL"),
+                    ("review_desc", "VARCHAR(100) DEFAULT NULL"),
+                    ("release_date", "VARCHAR(50) DEFAULT NULL"),
+                    ("steam_url", "VARCHAR(500) DEFAULT NULL"),
+                    ("hltb_game_id", "INTEGER DEFAULT NULL"),
+                    ("hltb_game_name", "VARCHAR(200) DEFAULT NULL"),
+                    ("hltb_url", "VARCHAR(500) DEFAULT NULL"),
+                    ("hltb_status", "VARCHAR(50) DEFAULT 'found'"),
+                ]
+                for col_name, col_def in new_game_fields:
+                    if col_name not in game_cols:
+                        connection.exec_driver_sql(f"ALTER TABLE games ADD COLUMN {col_name} {col_def}")
 
             await conn.run_sync(migrate_sqlite)
 

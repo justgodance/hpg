@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import random
-from sqlalchemy import func, select
+from typing import Any, Optional
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -13,16 +14,91 @@ from app.models.challenge import Challenge
 from app.models.game import Game
 from app.models.quest import Quest, QuestStatus
 from app.models.user import User
+from app.services.games_db import query_games_from_parser_db, sync_game_to_hpg
 
-# Вероятности категорий при генерации квестов на доске
-CATEGORY_WEIGHTS: dict[str, float] = {
-    "STEAM": 0.40,
-    "PRESET": 0.25,
-    "SERIES": 0.15,
-    "EMULATOR": 0.10,
-    "SANTA": 0.07,
-    "GOTY": 0.03,
-}
+# Карточки-архетипы для генерации контрактов из базы парсера games.db
+CARD_TEMPLATES: list[dict[str, Any]] = [
+    {
+        "card_type": "ROGUELIKE",
+        "card_title": "Rogue-like (6+ ч)",
+        "tag_filter": "Rogue",
+        "min_hltb_hours": 6.0,
+        "max_hltb_hours": None,
+        "min_rating": None,
+        "weight": 0.22,
+        "preset_name": "Steam: Rogue-like 6+ ч",
+    },
+    {
+        "card_type": "METROIDVANIA",
+        "card_title": "Метроидвания (10+ ч)",
+        "tag_filter": "Metroidvania",
+        "min_hltb_hours": 10.0,
+        "max_hltb_hours": None,
+        "min_rating": None,
+        "weight": 0.16,
+        "preset_name": "Steam: Метроидвания 10+ ч",
+    },
+    {
+        "card_type": "SOULSLIKE",
+        "card_title": "Souls-like / Хардкор (15+ ч)",
+        "tag_filter": "Souls-like",
+        "min_hltb_hours": 15.0,
+        "max_hltb_hours": None,
+        "min_rating": None,
+        "weight": 0.12,
+        "preset_name": "Steam: Souls-like 15+ ч",
+    },
+    {
+        "card_type": "RPG",
+        "card_title": "RPG / Приключение (20+ ч)",
+        "tag_filter": "RPG",
+        "min_hltb_hours": 20.0,
+        "max_hltb_hours": None,
+        "min_rating": None,
+        "weight": 0.14,
+        "preset_name": "Steam: RPG 20+ ч",
+    },
+    {
+        "card_type": "SHORT_INDIE",
+        "card_title": "Короткое Инди (до 5 ч)",
+        "tag_filter": "Indie",
+        "min_hltb_hours": 0.5,
+        "max_hltb_hours": 5.0,
+        "min_rating": None,
+        "weight": 0.12,
+        "preset_name": "Steam: Инди до 5 ч",
+    },
+    {
+        "card_type": "HORROR",
+        "card_title": "Хоррор / Выживание (6+ ч)",
+        "tag_filter": "Horror",
+        "min_hltb_hours": 6.0,
+        "max_hltb_hours": None,
+        "min_rating": None,
+        "weight": 0.10,
+        "preset_name": "Steam: Хоррор 6+ ч",
+    },
+    {
+        "card_type": "STEAM_TOP",
+        "card_title": "Шедевр Steam (95%+ рейтинг)",
+        "tag_filter": None,
+        "min_hltb_hours": 5.0,
+        "max_hltb_hours": None,
+        "min_rating": 95.0,
+        "weight": 0.08,
+        "preset_name": "Steam: Шедевр 95%+",
+    },
+    {
+        "card_type": "SANTA",
+        "card_title": "Подарок от Всех (50/50)",
+        "tag_filter": None,
+        "min_hltb_hours": None,
+        "max_hltb_hours": None,
+        "min_rating": None,
+        "weight": 0.06,
+        "preset_name": "Секретный подарок Санты",
+    },
+]
 
 
 async def create_quest(
@@ -57,71 +133,106 @@ async def create_quest(
     return await get_quest_by_id(session, quest.id)  # type: ignore
 
 
-async def refill_board(session: AsyncSession) -> list[Quest]:
+async def refill_board(session: AsyncSession, force_flush_oldest: bool = False) -> list[Quest]:
     """Механика 'Конвейер (Тетрис)':
     Поддерживает количество квестов со статусом AVAILABLE равным settings.MAX_BOARD_SIZE (12).
-    Использует взвешенное случайное распределение категорий:
-    STEAM (40%), PRESET (25%), SERIES (15%), EMULATOR (10%), SANTA (7%), GOTY (3%).
+    Защита от дедлока:
+    - Автоматически сжигает (DROPPED) квесты, висящие дольше BOARD_AUTO_ROTATE_HOURS (72 ч).
+    - При force_flush_oldest=True (нажатие кнопки при полной доске) сжигает 3 самых старых квеста.
     """
     max_size = settings.MAX_BOARD_SIZE
+    now = datetime.now(timezone.utc)
+
+    # 1. Авто-ротация: сжигаем невостребованные квесты старше 72 часов (TTL)
+    cutoff = now - timedelta(hours=settings.BOARD_AUTO_ROTATE_HOURS)
+    stale_stmt = select(Quest).where(Quest.status == QuestStatus.AVAILABLE, Quest.spawned_at < cutoff)
+    stale_quests = list((await session.execute(stale_stmt)).scalars().all())
+    for sq in stale_quests:
+        sq.status = QuestStatus.DROPPED
+        sq.completed_at = now
+
+    # 2. Если доска забита и вызван принудительный сброс конвейера: сжигаем 3 самых старых квеста
     count_stmt = select(func.count(Quest.id)).where(Quest.status == QuestStatus.AVAILABLE)
     available_count = (await session.execute(count_stmt)).scalar() or 0
 
+    if force_flush_oldest and available_count >= max_size:
+        oldest_stmt = (
+            select(Quest)
+            .where(Quest.status == QuestStatus.AVAILABLE)
+            .order_by(Quest.spawned_at.asc(), Quest.id.asc())
+            .limit(3)
+        )
+        oldest_quests = list((await session.execute(oldest_stmt)).scalars().all())
+        for oq in oldest_quests:
+            oq.status = QuestStatus.DROPPED
+            oq.completed_at = now
+        await session.commit()
+        available_count = (await session.execute(count_stmt)).scalar() or 0
+
     if available_count >= max_size:
+        if stale_quests:
+            await session.commit()
         return []
 
     needed = max_size - available_count
 
-    # ID игр, которые уже представлены на доске
-    active_games_stmt = select(Quest.game_id).where(
+    active_titles_stmt = select(Game.title).join(Quest, Quest.game_id == Game.id).where(
         Quest.status.in_([QuestStatus.AVAILABLE, QuestStatus.IN_PROGRESS]),
         Quest.game_id.is_not(None),
     )
-    active_game_ids = set((await session.execute(active_games_stmt)).scalars().all())
+    active_titles = set((await session.execute(active_titles_stmt)).scalars().all())
 
-    categories = list(CATEGORY_WEIGHTS.keys())
-    weights = list(CATEGORY_WEIGHTS.values())
-    chosen_categories = random.choices(categories, weights=weights, k=needed)
+    templates_pool = CARD_TEMPLATES
+    weights = [t["weight"] for t in templates_pool]
+    chosen_templates = random.choices(templates_pool, weights=weights, k=needed)
 
     new_quests: list[Quest] = []
     now = datetime.now(timezone.utc)
 
-    for cat in chosen_categories:
-        if cat == "SANTA":
+    for tmpl in chosen_templates:
+        if tmpl["card_type"] == "SANTA":
             # Спец-квест: коробка Санты без привязки игры до распаковки
             q = Quest(
                 game_id=None,
                 card_type="SANTA",
+                card_title=tmpl["card_title"],
                 is_santa_box=True,
+                is_roulette=True,
                 status=QuestStatus.AVAILABLE,
                 spawned_at=now,
             )
             session.add(q)
             new_quests.append(q)
         else:
-            # Выбираем случайную игру этой категории, которой нет на доске
-            games_query = select(Game).where(Game.category == cat)
-            if active_game_ids:
-                games_query = games_query.where(Game.id.not_in(active_game_ids))
-            games_query = games_query.order_by(func.random()).limit(1)
-            game = (await session.execute(games_query)).scalar_one_or_none()
+            # Ищем подходящую игру в games.db парсера по фильтрам карточки
+            candidates = query_games_from_parser_db(
+                tag=tmpl.get("tag_filter"),
+                min_hours=tmpl.get("min_hltb_hours"),
+                max_hours=tmpl.get("max_hltb_hours"),
+                min_rating=tmpl.get("min_rating"),
+                exclude_titles=active_titles,
+                limit=5,
+            )
+            candidate_dict = candidates[0] if candidates else None
 
-            # Фолбэк: если все игры категории на доске, берем любую игру категории
-            if not game:
-                fallback_query = select(Game).where(Game.category == cat).order_by(func.random()).limit(1)
-                game = (await session.execute(fallback_query)).scalar_one_or_none()
-
-            # Крайний фолбэк: любая игра из базы
-            if not game:
-                any_query = select(Game).order_by(func.random()).limit(1)
-                game = (await session.execute(any_query)).scalar_one_or_none()
-
-            if game:
-                active_game_ids.add(game.id)
+            if candidate_dict:
+                game = await sync_game_to_hpg(
+                    session,
+                    candidate_dict,
+                    category=tmpl["card_type"],
+                    preset_name=tmpl.get("preset_name"),
+                )
+                active_titles.add(game.title)
                 q = Quest(
                     game_id=game.id,
-                    card_type=cat,
+                    card_type=tmpl["card_type"],
+                    card_title=tmpl["card_title"],
+                    tag_filter=tmpl.get("tag_filter"),
+                    min_hltb_hours=tmpl.get("min_hltb_hours"),
+                    max_hltb_hours=tmpl.get("max_hltb_hours"),
+                    min_rating=tmpl.get("min_rating"),
                     is_santa_box=False,
+                    is_roulette=True,
                     status=QuestStatus.AVAILABLE,
                     spawned_at=now,
                 )
@@ -156,8 +267,8 @@ async def get_quests(
     return result.scalars().all()
 
 
-async def get_user_active_quest(session: AsyncSession, user_id: int) -> Quest | None:
-    """Finds currently active (IN_PROGRESS) quest for a user if any exists."""
+async def get_user_active_quests(session: AsyncSession, user_id: int) -> list[Quest]:
+    """Finds all currently active (IN_PROGRESS) quests for a user (up to MAX_ACTIVE_QUESTS)."""
     query = (
         select(Quest)
         .where(Quest.user_id == user_id, Quest.status == QuestStatus.IN_PROGRESS)
@@ -166,9 +277,16 @@ async def get_user_active_quest(session: AsyncSession, user_id: int) -> Quest | 
             selectinload(Quest.current_rolled_game),
             selectinload(Quest.challenge),
         )
+        .order_by(Quest.started_at.desc())
     )
     result = await session.execute(query)
-    return result.scalar_one_or_none()
+    return list(result.scalars().all())
+
+
+async def get_user_active_quest(session: AsyncSession, user_id: int) -> Quest | None:
+    """Finds currently active (IN_PROGRESS) quest for a user if any exists (returns first)."""
+    active = await get_user_active_quests(session, user_id)
+    return active[0] if active else None
 
 
 async def get_quest_by_id(session: AsyncSession, quest_id: int) -> Quest | None:
@@ -176,6 +294,7 @@ async def get_quest_by_id(session: AsyncSession, quest_id: int) -> Quest | None:
     query = (
         select(Quest)
         .where(Quest.id == quest_id)
+        .execution_options(populate_existing=True)
         .options(
             selectinload(Quest.game),
             selectinload(Quest.current_rolled_game),
@@ -194,39 +313,32 @@ async def take_quest(
     challenge_id: int | None = None,
     specific_game_id: int | None = None,
 ) -> Quest:
-    """Assigns an AVAILABLE quest to user with Santa box unpacking, inflation locking, and conveyor refill."""
-    # 1. Row-level lock via with_for_update()
-    quest_stmt = (
-        select(Quest)
-        .where(Quest.id == quest_id)
-        .options(
-            selectinload(Quest.game),
-            selectinload(Quest.current_rolled_game),
-            selectinload(Quest.user),
-            selectinload(Quest.challenge),
-        )
-        .with_for_update()
-    )
-    quest = (await session.execute(quest_stmt)).scalar_one_or_none()
-    if not quest or quest.status != QuestStatus.AVAILABLE:
-        raise ValueError("Контракт уже забрал другой игрок!")
+    """Assigns an AVAILABLE quest to user with atomic status claim, inflation cap, and conveyor refill."""
+    now = datetime.now(timezone.utc)
 
-    # 2. Check user existence
+    # 1. Check user existence
     user = await session.get(User, user_id)
     if not user:
         raise ValueError(f"Пользователь #{user_id} не найден")
 
-    # 3. Check slots limit: user cannot have 1 or more IN_PROGRESS quests
+    # 2. Check slots limit: user cannot exceed settings.MAX_ACTIVE_QUESTS (2)
     active_count_stmt = (
         select(func.count(Quest.id))
         .where(Quest.user_id == user_id, Quest.status == QuestStatus.IN_PROGRESS)
     )
     active_count = (await session.execute(active_count_stmt)).scalar() or 0
-    if active_count >= 1:
-        raise ValueError("Достигнут лимит активных квестов: у вас уже есть один активный квест. Сдайте или сбросьте текущий.")
+    if active_count >= settings.MAX_ACTIVE_QUESTS:
+        raise ValueError(
+            f"Достигнут лимит активных квестов ({settings.MAX_ACTIVE_QUESTS}/{settings.MAX_ACTIVE_QUESTS}). "
+            f"Сдайте или сбросьте один из текущих квестов перед взятием нового."
+        )
 
-    # 4. Underdog check
-    if quest.is_underdog_only:
+    # 3. Preview quest for underdog check
+    quest_preview = await session.get(Quest, quest_id)
+    if not quest_preview or quest_preview.status != QuestStatus.AVAILABLE:
+        raise ValueError("Контракт уже забрал другой игрок!")
+
+    if quest_preview.is_underdog_only:
         user_is_underdog = await is_underdog(session, user)
         if not user_is_underdog:
             raise PermissionError(
@@ -234,17 +346,47 @@ async def take_quest(
                 f"(отставание от лидера > {settings.UNDERDOG_SCORE_GAP} очков)"
             )
 
-    now = datetime.now(timezone.utc)
+    # 4. Atomic row claim via UPDATE to prevent race conditions on both SQLite and PostgreSQL
+    claim_values: dict[str, Any] = {
+        "status": QuestStatus.IN_PROGRESS,
+        "user_id": user_id,
+        "started_at": now,
+    }
+    if specific_game_id:
+        claim_values["game_id"] = specific_game_id
+        claim_values["current_rolled_game_id"] = specific_game_id
+
+    claim_stmt = (
+        update(Quest)
+        .where(Quest.id == quest_id, Quest.status == QuestStatus.AVAILABLE)
+        .values(**claim_values)
+    )
+    res = await session.execute(claim_stmt)
+    if res.rowcount == 0:
+        raise ValueError("Контракт уже забрал другой игрок!")
+
+    quest = await get_quest_by_id(session, quest_id)
+    if not quest:
+        raise ValueError(f"Квест #{quest_id} не найден")
+
+    # 5. Capped inflation calculation (Hard Cap = MAX_INFLATION_INTERVALS, e.g. +60%)
     spawned = quest.spawned_at if quest.spawned_at.tzinfo else quest.spawned_at.replace(tzinfo=timezone.utc)
     elapsed_seconds = (now - spawned).total_seconds()
     interval_seconds = settings.INFLATION_INTERVAL_HOURS * 3600
-    intervals = max(0, int(elapsed_seconds // interval_seconds))
+    intervals = min(settings.MAX_INFLATION_INTERVALS, max(0, int(elapsed_seconds // interval_seconds)))
     inflation_mult = 1.0 + settings.INFLATION_RATE_PER_INTERVAL * intervals
 
-    # 5. Распаковка подарка Санты (50/50 жребий или конкретная выпавшая игра)
+    # 6. Распаковка подарка Санты (50/50 жребий или конкретная выпавшая игра)
     if quest.is_santa_box:
         if specific_game_id:
             santa_game = await session.get(Game, specific_game_id)
+            if not santa_game:
+                fallback_query = select(Game).order_by(func.random()).limit(1)
+                santa_game = (await session.execute(fallback_query)).scalar_one()
+            target_category = santa_game.category
+            bonus_pct = 0.10 if target_category == "SANTA_TOP" else 0.50
+        elif quest.current_rolled_game_id:
+            santa_game = await session.get(Game, quest.current_rolled_game_id)
             if not santa_game:
                 fallback_query = select(Game).order_by(func.random()).limit(1)
                 santa_game = (await session.execute(fallback_query)).scalar_one()
@@ -255,15 +397,14 @@ async def take_quest(
             target_category = "SANTA_TOP" if is_top_gift else "SANTA_COAL"
             bonus_pct = 0.10 if is_top_gift else 0.50
 
-            # Выбираем случайную игру из соответствующей категории Санты
             santa_query = select(Game).where(Game.category == target_category).order_by(func.random()).limit(1)
             santa_game = (await session.execute(santa_query)).scalar_one_or_none()
-
             if not santa_game:
                 fallback_query = select(Game).order_by(func.random()).limit(1)
                 santa_game = (await session.execute(fallback_query)).scalar_one()
 
         quest.game_id = santa_game.id
+        quest.current_rolled_game_id = santa_game.id
         quest.is_santa_box = False
         quest.card_type = target_category
 
@@ -274,19 +415,22 @@ async def take_quest(
         # Обычный квест или рулетка
         if specific_game_id and quest.is_roulette:
             quest.current_rolled_game_id = specific_game_id
+            quest.game_id = specific_game_id
         elif quest.is_roulette and quest.game_list_ids:
             quest.current_rolled_game_id = random.choice(quest.game_list_ids)
+            quest.game_id = quest.current_rolled_game_id
         elif quest.is_roulette and not quest.game_list_ids:
             quest.current_rolled_game_id = quest.game_id
 
-        active_game = quest.current_rolled_game if (quest.is_roulette and quest.current_rolled_game) else quest.game
+        active_game = await session.get(Game, quest.game_id)
         if not active_game:
             raise ValueError(f"Игра для квеста #{quest.id} не определена")
+        quest.game = active_game
 
         base_reward = active_game.reward_points
         quest.locked_reward = round(base_reward * inflation_mult)
 
-    # 6. Привязка опционального челленджа
+    # 7. Привязка опционального челленджа
     if challenge_id is not None:
         challenge = await session.get(Challenge, challenge_id)
         if not challenge:
@@ -294,11 +438,6 @@ async def take_quest(
         quest.challenge_id = challenge_id
     else:
         quest.challenge_id = None
-
-    # 7. Перевод в статус IN_PROGRESS
-    quest.user_id = user_id
-    quest.status = QuestStatus.IN_PROGRESS
-    quest.started_at = now
 
     await session.commit()
 
@@ -351,8 +490,10 @@ async def reroll_quest(
     if quest.user_id != user_id:
         raise ValueError(f"Квест #{quest_id} закреплен за другим участником")
 
-    user = quest.user
-    if not user or user.rerolls_left <= 0:
+    user = await session.get(User, user_id)
+    if not user:
+        raise ValueError(f"Пользователь #{user_id} не найден")
+    if user.rerolls_left <= 0:
         raise ValueError("У вас нет доступных попыток реролла (rerolls_left = 0)")
 
     # Determine category
@@ -371,23 +512,39 @@ async def reroll_quest(
             rolled_gid = random.choice(candidates_ids)
             new_game = await session.get(Game, rolled_gid)
         else:
-            cat_stmt = select(Game).where(Game.category == category)
-            if quest.game_id:
-                diff_stmt = cat_stmt.where(Game.id != quest.game_id)
-                candidates = list((await session.execute(diff_stmt)).scalars().all())
-                if not candidates:
-                    candidates = list((await session.execute(cat_stmt)).scalars().all())
+            # Ищем новую игру в games.db по фильтрам квеста
+            exclude = {quest.game.title} if quest.game else set()
+            candidates_dicts = query_games_from_parser_db(
+                tag=quest.tag_filter,
+                min_hours=quest.min_hltb_hours,
+                max_hours=quest.max_hltb_hours,
+                min_rating=quest.min_rating,
+                is_santa_top=(quest.card_type == "SANTA_TOP"),
+                is_santa_coal=(quest.card_type == "SANTA_COAL"),
+                exclude_titles=exclude,
+                limit=10,
+            )
+            if candidates_dicts:
+                chosen_dict = random.choice(candidates_dicts)
+                new_game = await sync_game_to_hpg(session, chosen_dict, category=category)
             else:
-                candidates = list((await session.execute(cat_stmt)).scalars().all())
+                cat_stmt = select(Game).where(Game.category == category)
+                if quest.game_id:
+                    diff_stmt = cat_stmt.where(Game.id != quest.game_id)
+                    candidates = list((await session.execute(diff_stmt)).scalars().all())
+                    if not candidates:
+                        candidates = list((await session.execute(cat_stmt)).scalars().all())
+                else:
+                    candidates = list((await session.execute(cat_stmt)).scalars().all())
 
-            if not candidates:
-                fallback_stmt = select(Game).where(Game.id != quest.game_id) if quest.game_id else select(Game)
-                candidates = list((await session.execute(fallback_stmt)).scalars().all())
+                if not candidates:
+                    fallback_stmt = select(Game).where(Game.id != quest.game_id) if quest.game_id else select(Game)
+                    candidates = list((await session.execute(fallback_stmt)).scalars().all())
 
-            if not candidates:
-                raise ValueError("Не удалось найти подходящую игру для реролла")
+                if not candidates:
+                    raise ValueError("Не удалось найти подходящую игру для реролла")
 
-            new_game = random.choice(candidates)
+                new_game = random.choice(candidates)
 
     if not new_game:
         raise ValueError("Ошибка выбора новой игры для реролла")
@@ -397,7 +554,7 @@ async def reroll_quest(
     spawned = quest.spawned_at if quest.spawned_at.tzinfo else quest.spawned_at.replace(tzinfo=timezone.utc)
     elapsed_seconds = (now - spawned).total_seconds()
     interval_seconds = settings.INFLATION_INTERVAL_HOURS * 3600
-    intervals = max(0, int(elapsed_seconds // interval_seconds))
+    intervals = min(settings.MAX_INFLATION_INTERVALS, max(0, int(elapsed_seconds // interval_seconds)))
     inflation_mult = 1.0 + settings.INFLATION_RATE_PER_INTERVAL * intervals
 
     bonus_pct = 0.0
@@ -520,7 +677,9 @@ async def drop_quest(
     if quest.user_id != user_id:
         raise ValueError(f"Квест #{quest_id} закреплен за другим участником")
 
-    user = quest.user
+    user = await session.get(User, user_id)
+    if not user:
+        raise ValueError(f"Пользователь #{user_id} не найден")
     active_game = quest.current_rolled_game if (quest.is_roulette and quest.current_rolled_game) else quest.game
 
     # Free drops logic

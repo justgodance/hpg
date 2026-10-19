@@ -33,6 +33,7 @@ from app.models.game import Game
 from app.models.quest import Quest, QuestStatus
 from app.models.user import User
 from app.schemas.quest import QuestResponse
+from app.services.games_db import query_games_from_parser_db, sync_game_to_hpg, resolve_single_image_url
 
 router = APIRouter(tags=["Web UI"])
 templates = Jinja2Templates(directory="app/templates")
@@ -122,7 +123,18 @@ async def get_board_context(
 
     # Convert to schema so dynamic inflation current_reward is automatically computed
     available_quests = [QuestResponse.model_validate(q) for q in db_available]
-    in_progress_quests = [QuestResponse.model_validate(q) for q in db_in_progress]
+    raw_in_progress = [QuestResponse.model_validate(q) for q in db_in_progress]
+
+    # Сортировка: квесты текущего игрока всегда выводятся выше квестов других игроков
+    user_active_quests = [q for q in raw_in_progress if current_user and q.user_id == current_user.id]
+    other_active_quests = [q for q in raw_in_progress if not current_user or q.user_id != current_user.id]
+
+    user_active_quests.sort(key=lambda q: q.started_at.timestamp() if q.started_at else q.id, reverse=True)
+    other_active_quests.sort(key=lambda q: q.started_at.timestamp() if q.started_at else q.id, reverse=True)
+
+    in_progress_quests = user_active_quests + other_active_quests
+    user_active_count = len(user_active_quests)
+    user_can_take_quest = user_active_count < settings.MAX_ACTIVE_QUESTS
 
     return {
         "request": request,
@@ -131,6 +143,11 @@ async def get_board_context(
         "leaderboard": users,
         "available_quests": available_quests,
         "in_progress_quests": in_progress_quests,
+        "user_active_quests": user_active_quests,
+        "other_active_quests": other_active_quests,
+        "user_active_count": user_active_count,
+        "user_can_take_quest": user_can_take_quest,
+        "max_active_quests": settings.MAX_ACTIVE_QUESTS,
         "active_page": "board",
     }
 
@@ -475,8 +492,17 @@ async def web_get_board(
         clear_modal = (
             '<div id="roulette-modal-container" hx-swap-oob="innerHTML"></div>'
             '<div id="completion-modal-container" hx-swap-oob="innerHTML"></div>'
+            '<div id="challenges-modal" hx-swap-oob="delete"></div>'
         )
-        return HTMLResponse(content=board_html + clear_modal)
+        stats_bar_html = templates.get_template("partials/user_stats_bar.html").render(
+            {
+                "current_user": ctx["current_user"],
+                "user_active_count": ctx["user_active_count"],
+                "max_active_quests": ctx["max_active_quests"],
+                "is_oob": True,
+            }
+        )
+        return HTMLResponse(content=board_html + clear_modal + stats_bar_html)
 
     # For full page loads (browser navigation, redirects, link clicks <a href="/board">)
     return templates.TemplateResponse("index.html", ctx)
@@ -488,16 +514,18 @@ async def get_board_items(
     db: AsyncSession = Depends(get_db),
 ):
     """Возвращает актуальный HTML-фрагмент сетки доступных квестов (AVAILABLE) для тихого HTMX-поллинга."""
+    cookie_uid = request.cookies.get("session_user_id")
+    current_user = await db.get(User, int(cookie_uid)) if cookie_uid and cookie_uid.isdigit() else None
+
     db_available = await get_quests(db, status=QuestStatus.AVAILABLE)
     available_quests = [QuestResponse.model_validate(q) for q in db_available]
 
-    cookie_uid = request.cookies.get("session_user_id")
-    current_user = None
-    if cookie_uid and cookie_uid.isdigit():
-        current_user = await db.get(User, int(cookie_uid))
-    if not current_user:
-        users = await get_or_seed_users(db)
-        current_user = users[0] if users else None
+    active_count = 0
+    if current_user:
+        active_stmt = select(func.count(Quest.id)).where(
+            Quest.user_id == current_user.id, Quest.status == QuestStatus.IN_PROGRESS
+        )
+        active_count = (await db.execute(active_stmt)).scalar() or 0
 
     return templates.TemplateResponse(
         "partials/board_grid.html",
@@ -505,6 +533,9 @@ async def get_board_items(
             "request": request,
             "available_quests": available_quests,
             "current_user": current_user,
+            "user_active_count": active_count,
+            "user_can_take_quest": active_count < settings.MAX_ACTIVE_QUESTS,
+            "max_active_quests": settings.MAX_ACTIVE_QUESTS,
         },
     )
 
@@ -545,31 +576,35 @@ async def take_quest_endpoint(
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
 
-    # 1. Проверка лимита: разрешен только 1 активный квест!
-    active_quest = await get_user_active_quest(db, active_uid)
-    if active_quest:
-        active_title = active_quest.game.title if active_quest.game else "Текущий квест"
+    # 1. Проверка лимита: разрешено максимум settings.MAX_ACTIVE_QUESTS активных квестов!
+    active_count_stmt = select(func.count(Quest.id)).where(
+        Quest.user_id == active_uid, Quest.status == QuestStatus.IN_PROGRESS
+    )
+    active_count = (await db.execute(active_count_stmt)).scalar() or 0
+    if active_count >= settings.MAX_ACTIVE_QUESTS:
         is_htmx = request.headers.get("hx-request") == "true"
         if is_htmx:
+            toast_hdr = json.dumps({"showToast": {"type": "warning", "message": f"Достигнут лимит активных квестов ({settings.MAX_ACTIVE_QUESTS}/{settings.MAX_ACTIVE_QUESTS})!"}})
             return HTMLResponse(
-                content=f'<div id="roulette-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 transition-all duration-300">'
-                        f'<div class="relative w-full max-w-md bg-[#180e08] border-4 border-amber-600 rounded-2xl p-6 sm:p-8 text-center shadow-2xl space-y-4">'
+                content=f'<div id="roulette-modal" class="modal-open fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 overflow-y-auto transition-all duration-300">'
+                        f'<div class="relative w-full max-w-md my-auto max-h-[92vh] overflow-y-auto bg-[#180e08] border-4 border-amber-600 rounded-2xl p-6 sm:p-8 text-center shadow-2xl space-y-4">'
                         f'<div class="w-14 h-14 rounded-full bg-amber-950 border-2 border-amber-500 text-amber-300 flex items-center justify-center text-3xl mx-auto shadow-inner">⚠️</div>'
                         f'<h3 class="text-xl sm:text-2xl font-heading font-black text-amber-300 tracking-wide uppercase">Лимит квестов</h3>'
                         f'<p class="text-base sm:text-lg text-[#edd6bd] font-serif leading-relaxed">'
-                        f'У вас уже есть активный квест: <strong class="text-amber-300">«{active_title}»</strong>.<br><br>'
-                        f'В турнире разрешено выполнять <strong class="text-amber-300">только 1 активный квест</strong> одновременно.<br><br>'
-                        f'Сначала завершите или сбросьте текущий квест, чтобы взять новый.'
+                        f'У вас уже максимум активных квестов: <strong class="text-amber-300">({settings.MAX_ACTIVE_QUESTS}/{settings.MAX_ACTIVE_QUESTS})</strong>.<br><br>'
+                        f'В турнире разрешено выполнять <strong class="text-amber-300">не более {settings.MAX_ACTIVE_QUESTS} активного квеста</strong> одновременно.<br><br>'
+                        f'Сначала завершите или сбросьте текущий контракт.'
                         f'</p>'
                         f'<div class="pt-2">'
                         f'<button onclick="document.getElementById(\'roulette-modal\').remove()" class="w-full py-3 px-4 rounded-xl bg-gradient-to-b from-stone-800 to-stone-900 hover:from-stone-700 hover:to-stone-800 text-amber-200 border-2 border-stone-600 font-heading font-black uppercase tracking-wider cursor-pointer active:scale-95 transition-all shadow-md">'
                         f'Понятно'
                         f'</button>'
-                        f'</div></div></div>'
+                        f'</div></div></div>',
+                headers={"HX-Trigger": toast_hdr},
             )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Достигнут лимит активных квестов. У вас уже есть активный квест: «{active_title}». Сдайте или сбросьте его перед тем, как брать новый.",
+            detail=f"Достигнут лимит активных квестов. У вас уже {settings.MAX_ACTIVE_QUESTS} активных квеста. Сдайте или сбросьте один перед тем, как брать новый.",
         )
 
     # 2. Проверка доступности квеста
@@ -592,13 +627,15 @@ async def take_quest_endpoint(
     if not quest or quest.status != QuestStatus.AVAILABLE:
         is_htmx = request.headers.get("hx-request") == "true"
         if is_htmx:
+            toast_hdr = json.dumps({"showToast": {"type": "error", "message": "Контракт уже забран другим игроком!"}})
             return HTMLResponse(
-                content='<div id="roulette-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 transition-all duration-300">'
-                        '<div class="relative w-full max-w-md bg-[#180e08] border-4 border-red-800 rounded-2xl p-6 text-center shadow-2xl space-y-4">'
+                content='<div id="roulette-modal" class="modal-open fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 overflow-y-auto transition-all duration-300">'
+                        '<div class="relative w-full max-w-md my-auto bg-[#180e08] border-4 border-red-800 rounded-2xl p-6 text-center shadow-2xl space-y-4">'
                         '<h3 class="text-xl font-heading font-black text-red-400">⚠️ Контракт недоступен</h3>'
                         '<p class="text-base text-[#edd6bd] font-serif">Этот квест уже взял другой игрок или он был завершен!</p>'
                         '<button hx-get="/board" hx-target="#main-board" hx-swap="outerHTML" onclick="document.getElementById(\'roulette-modal\').remove()" class="w-full py-3 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-amber-200 border border-stone-600 font-heading font-black uppercase tracking-wider cursor-pointer">Обновить Доску</button>'
-                        '</div></div>'
+                        '</div></div>',
+                headers={"HX-Trigger": toast_hdr},
             )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -612,8 +649,8 @@ async def take_quest_endpoint(
             is_htmx = request.headers.get("hx-request") == "true"
             if is_htmx:
                 return HTMLResponse(
-                    content='<div id="roulette-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4">'
-                            '<div class="relative w-full max-w-md bg-[#180e08] border-4 border-amber-600 rounded-2xl p-6 text-center shadow-2xl space-y-4">'
+                    content='<div id="roulette-modal" class="modal-open fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 overflow-y-auto">'
+                            '<div class="relative w-full max-w-md my-auto bg-[#180e08] border-4 border-amber-600 rounded-2xl p-6 text-center shadow-2xl space-y-4">'
                             '<h3 class="text-xl font-heading font-black text-amber-400">⚠️ Только для Андердога</h3>'
                             '<p class="text-base text-[#edd6bd] font-serif">Этот квест доступен только участникам со статусом Андердог!</p>'
                             '<button onclick="document.getElementById(\'roulette-modal\').remove()" class="w-full py-3 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-amber-200 border border-stone-600 font-heading font-black uppercase tracking-wider cursor-pointer">Закрыть</button>'
@@ -644,90 +681,202 @@ async def take_quest_endpoint(
         await db.refresh(quest)
         return QuestResponse.model_validate(quest)
 
-    # 4. Формирование барабана рулетки (Колеса Фортуны)
+    # 4. Формирование барабана рулетки из games.db парсера
     winning_game: Optional[Game] = None
     bonus_pct = 0.0
 
     if quest.is_santa_box:
-        is_top = random.choice([True, False])
-        target_cat = "SANTA_TOP" if is_top else "SANTA_COAL"
-        bonus_pct = 0.10 if is_top else 0.50
-        santa_stmt = select(Game).where(Game.category == target_cat).order_by(func.random()).limit(1)
-        winning_game = (await db.execute(santa_stmt)).scalar_one_or_none()
+        # Если игра для этой коробки Санты уже была определена ранее — сохраняем её (защита от F5)
+        if quest.current_rolled_game_id:
+            winning_game = await db.get(Game, quest.current_rolled_game_id)
         if not winning_game:
-            winning_game = (await db.execute(select(Game).order_by(func.random()).limit(1))).scalar_one()
-    elif quest.is_roulette and quest.game_list_ids:
-        rolled_id = random.choice(quest.game_list_ids)
-        winning_game = await db.get(Game, rolled_id)
-        if not winning_game:
-            winning_game = quest.game
+            is_top = random.choice([True, False])
+            target_cat = "SANTA_TOP" if is_top else "SANTA_COAL"
+            bonus_pct = 0.10 if is_top else 0.50
+            santa_candidates = query_games_from_parser_db(
+                is_santa_top=is_top,
+                is_santa_coal=(not is_top),
+                limit=10,
+            )
+            if santa_candidates:
+                chosen_dict = random.choice(santa_candidates)
+                winning_game = await sync_game_to_hpg(db, chosen_dict, category=target_cat)
+            else:
+                santa_stmt = select(Game).where(Game.category == target_cat).order_by(func.random()).limit(1)
+                winning_game = (await db.execute(santa_stmt)).scalar_one_or_none()
+                if not winning_game:
+                    winning_game = (await db.execute(select(Game).order_by(func.random()).limit(1))).scalar_one()
+            quest.current_rolled_game_id = winning_game.id
+            await db.commit()
+        else:
+            bonus_pct = 0.10 if winning_game.category == "SANTA_TOP" else 0.50
     else:
-        winning_game = quest.game
+        # Обычный квест или квест по фильтрам (Rogue-like 6+ ч, Metroidvania, etc.)
+        if quest.current_rolled_game_id:
+            winning_game = await db.get(Game, quest.current_rolled_game_id)
+        if not winning_game:
+            candidates = query_games_from_parser_db(
+                tag=quest.tag_filter,
+                min_hours=quest.min_hltb_hours,
+                max_hours=quest.max_hltb_hours,
+                min_rating=quest.min_rating,
+                limit=15,
+            )
+            if candidates:
+                chosen_dict = candidates[0]
+                winning_game = await sync_game_to_hpg(db, chosen_dict, category=quest.card_type)
+            else:
+                winning_game = quest.game
 
     if not winning_game:
         winning_game = (await db.execute(select(Game).order_by(func.random()).limit(1))).scalar_one()
 
-    winning_title = winning_game.title
-    category = winning_game.category
+    if winning_game and winning_game.steam_appid:
+        resolved_img = resolve_single_image_url(winning_game.steam_appid, winning_game.image_url)
+        if resolved_img and resolved_img != winning_game.image_url:
+            winning_game.image_url = resolved_img
+            await db.flush()
 
-    # Расчет ожидаемой награды с учетом текущей инфляции
+    winning_title = winning_game.title
+
+    # Расчет ожидаемой награды с учетом текущей инфляции (Hard Cap)
     now = datetime.now(timezone.utc)
     spawned = quest.spawned_at if quest.spawned_at.tzinfo else quest.spawned_at.replace(tzinfo=timezone.utc)
     elapsed_seconds = (now - spawned).total_seconds()
     interval_seconds = settings.INFLATION_INTERVAL_HOURS * 3600
-    intervals = max(0, int(elapsed_seconds // interval_seconds))
+    intervals = min(settings.MAX_INFLATION_INTERVALS, max(0, int(elapsed_seconds // interval_seconds)))
     inflation_mult = 1.0 + settings.INFLATION_RATE_PER_INTERVAL * intervals
 
     base_reward = round(winning_game.reward_points * (1.0 + bonus_pct))
     candidate_reward = round(base_reward * inflation_mult)
 
-    # 5. Генерация списка вариантов для анимации вращения барабана
+    # 5. Генерация списка игр с картинками для барабана рулетки
     fake_needed = settings.ROULETTE_OPTIONS_COUNT - 1
-    fake_stmt = (
-        select(Game.title)
-        .where(Game.category == category, Game.title != winning_title)
-        .order_by(func.random())
-        .limit(fake_needed)
+    reel_candidates = query_games_from_parser_db(
+        tag=quest.tag_filter,
+        min_hours=quest.min_hltb_hours,
+        max_hours=quest.max_hltb_hours,
+        min_rating=quest.min_rating,
+        exclude_titles={winning_title},
+        limit=fake_needed,
     )
-    fake_titles = list((await db.execute(fake_stmt)).scalars().all())
 
-    if len(fake_titles) < fake_needed:
-        remaining = fake_needed - len(fake_titles)
+    fake_games: list[dict[str, Any]] = []
+    for cand in reel_candidates:
+        cand_img = cand.get("image_url") or (f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{cand.get('steam_appid')}/header.jpg" if cand.get("steam_appid") else None)
+        fake_games.append({
+            "title": cand["title"],
+            "image_url": cand_img,
+            "genre": cand.get("tags", ["Игра"])[0] if cand.get("tags") else "Экшен",
+            "hltb_hours": cand.get("hltb_main_story_hours") or 0.0,
+            "developer": cand.get("developer"),
+            "review_percentage": cand.get("review_percentage"),
+        })
+
+    # Дополняем из parser/data/games.db если нужно
+    if len(fake_games) < fake_needed:
+        remaining = fake_needed - len(fake_games)
+        more_candidates = query_games_from_parser_db(
+            exclude_titles={winning_title}.union({g["title"] for g in fake_games}),
+            limit=remaining,
+        )
+        for cand in more_candidates:
+            cand_img = cand.get("image_url") or (f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{cand.get('steam_appid')}/header.jpg" if cand.get("steam_appid") else None)
+            if cand_img:
+                fake_games.append({
+                    "title": cand["title"],
+                    "image_url": cand_img,
+                    "genre": cand.get("tags", ["Игра"])[0] if cand.get("tags") else "Экшен",
+                    "hltb_hours": cand.get("hltb_main_story_hours") or 0.0,
+                    "developer": cand.get("developer"),
+                    "review_percentage": cand.get("review_percentage"),
+                })
+
+    # Дополняем из hpg.db с гарантированной картинкой
+    if len(fake_games) < fake_needed:
+        remaining = fake_needed - len(fake_games)
         fallback_stmt = (
-            select(Game.title)
-            .where(Game.title != winning_title, Game.title.not_in(fake_titles))
+            select(Game)
+            .where(
+                Game.title != winning_title,
+                Game.title.not_in([g["title"] for g in fake_games]),
+                Game.image_url.is_not(None),
+                Game.image_url != "",
+            )
             .order_by(func.random())
             .limit(remaining)
         )
-        more_titles = list((await db.execute(fallback_stmt)).scalars().all())
-        fake_titles.extend(more_titles)
+        fb_games = list((await db.execute(fallback_stmt)).scalars().all())
+        for fbg in fb_games:
+            fake_games.append({
+                "title": fbg.title,
+                "image_url": fbg.image_url,
+                "genre": fbg.genre,
+                "hltb_hours": fbg.hltb_hours,
+                "developer": fbg.developer,
+                "review_percentage": fbg.review_percentage,
+            })
 
-    while len(fake_titles) < fake_needed:
-        fake_titles.append(f"Игра #{len(fake_titles) + 1}")
+    random.shuffle(fake_games)
 
-    random.shuffle(fake_titles)
+    winning_dict = {
+        "title": winning_game.title,
+        "image_url": winning_game.image_url,
+        "genre": winning_game.genre,
+        "hltb_hours": winning_game.hltb_hours,
+        "developer": winning_game.developer,
+        "review_percentage": winning_game.review_percentage,
+    }
 
-    # Выигрышный вариант помещается на предпоследнюю позицию (N - 2)
     penultimate_idx = max(0, settings.ROULETTE_OPTIONS_COUNT - 2)
-    roulette_titles = fake_titles[:penultimate_idx] + [winning_title] + fake_titles[penultimate_idx:fake_needed]
-    roulette_titles = roulette_titles[: settings.ROULETTE_OPTIONS_COUNT]
-    winning_index = roulette_titles.index(winning_title)
+    roulette_games = fake_games[:penultimate_idx] + [winning_dict] + fake_games[penultimate_idx:fake_needed]
+    roulette_games = roulette_games[: settings.ROULETTE_OPTIONS_COUNT]
+    winning_index = penultimate_idx
+    roulette_titles = [g["title"] for g in roulette_games]
 
-    return templates.TemplateResponse(
-        "partials/roulette_modal.html",
+    # 6. МГНОВЕННО ФИКСИРУЕМ ВЗЯТИЕ КВЕСТА В БАЗЕ ДАННЫХ!
+    # Игрок НЕ МОЖЕТ отменить выпавшую игру обновлением страницы (F5) или закрытием вкладки.
+    # Квест переходит в статус IN_PROGRESS и привязывается к пользователю.
+    # Для отказа от игры игрок ОБЯЗАН использовать реролл или сброс со штрафом.
+    quest = await take_quest(db, quest_id=quest_id, user_id=active_uid, specific_game_id=winning_game.id)
+    quest.game_id = winning_game.id
+    quest.current_rolled_game_id = winning_game.id
+    quest.game = winning_game
+    await db.commit()
+    await refill_board(db)
+    await db.refresh(user)
+
+    all_users = list((await db.execute(select(User))).scalars().all())
+    attach_underdog_flags(all_users)
+
+    stats_bar_html = templates.get_template("partials/user_stats_bar.html").render(
+        {
+            "current_user": user,
+            "user_active_count": 1,
+            "max_active_quests": settings.MAX_ACTIVE_QUESTS,
+            "is_oob": True,
+        }
+    )
+
+    modal_html = templates.get_template("partials/roulette_modal.html").render(
         {
             "request": request,
             "quest": quest,
+            "current_user": user,
             "user_id": active_uid,
             "winning_game": winning_game,
             "winning_title": winning_title,
-            "candidate_reward": candidate_reward,
+            "candidate_reward": quest.locked_reward,
+            "penalty_points": winning_game.penalty_points,
+            "roulette_games": roulette_games,
             "roulette_titles": roulette_titles,
             "winning_index": winning_index,
-            "options_count": len(roulette_titles),
+            "options_count": len(roulette_games),
             "duration_sec": settings.ROULETTE_DURATION_SEC,
-        },
+            "is_reroll": False,
+        }
     )
+    return HTMLResponse(content=modal_html + stats_bar_html)
 
 
 @router.post("/quests/{quest_id}/confirm-take", response_class=HTMLResponse)
@@ -755,16 +904,18 @@ async def web_confirm_take_quest(
     raw_gid = game_id or form_game_id
     gid = int(raw_gid) if raw_gid and str(raw_gid).isdigit() else None
 
-    # Проверка лимита: у пользователя не должно быть активного квеста
-    active_quest = await get_user_active_quest(db, uid)
-    if active_quest:
-        active_title = active_quest.game.title if active_quest.game else "Текущий квест"
+    # Проверка лимита: у пользователя не должно быть больше settings.MAX_ACTIVE_QUESTS активных квестов (исключая текущий)
+    active_count_stmt = select(func.count(Quest.id)).where(
+        Quest.user_id == uid, Quest.status == QuestStatus.IN_PROGRESS, Quest.id != quest_id
+    )
+    active_count = (await db.execute(active_count_stmt)).scalar() or 0
+    if active_count >= settings.MAX_ACTIVE_QUESTS:
         return HTMLResponse(
-            content=f'<div id="challenges-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4">'
-                    f'<div class="relative w-full max-w-md bg-[#180e08] border-4 border-amber-600 rounded-2xl p-6 text-center shadow-2xl space-y-4">'
+            content=f'<div id="challenges-modal" class="modal-open fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 overflow-y-auto">'
+                    f'<div class="relative w-full max-w-md my-auto max-h-[92vh] overflow-y-auto bg-[#180e08] border-4 border-amber-600 rounded-2xl p-6 text-center shadow-2xl space-y-4">'
                     f'<div class="w-14 h-14 rounded-full bg-amber-950 border-2 border-amber-500 text-amber-300 flex items-center justify-center text-3xl mx-auto shadow-inner">⚠️</div>'
                     f'<h3 class="text-xl font-heading font-black text-amber-300 mb-2">⚠️ Лимит квестов</h3>'
-                    f'<p class="text-base text-[#edd6bd] font-serif mb-5">У вас уже есть активный квест: «{active_title}». В турнире разрешен только 1 активный квест одновременно.</p>'
+                    f'<p class="text-base text-[#edd6bd] font-serif mb-5">У вас уже максимум активных контрактов: ({settings.MAX_ACTIVE_QUESTS} из {settings.MAX_ACTIVE_QUESTS}). В турнире разрешено не более {settings.MAX_ACTIVE_QUESTS} активного квеста одновременно.</p>'
                     f'<button hx-get="/board" hx-target="#main-board" hx-swap="outerHTML" class="px-6 py-2.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-amber-200 border border-stone-600 font-heading font-black uppercase tracking-wider cursor-pointer">Вернуться к Доске</button></div></div>'
         )
 
@@ -786,6 +937,19 @@ async def web_confirm_take_quest(
         if quest.status == QuestStatus.AVAILABLE:
             quest = await take_quest(db, quest_id=quest_id, user_id=uid, specific_game_id=gid)
             await refill_board(db)
+        elif gid and quest.game_id != gid:
+            quest.game_id = gid
+            quest.current_rolled_game_id = gid
+            g = await db.get(Game, gid)
+            if g:
+                now = datetime.now(timezone.utc)
+                spawned = quest.spawned_at if quest.spawned_at.tzinfo else quest.spawned_at.replace(tzinfo=timezone.utc)
+                elapsed_seconds = (now - spawned).total_seconds()
+                interval_seconds = settings.INFLATION_INTERVAL_HOURS * 3600
+                intervals = min(settings.MAX_INFLATION_INTERVALS, max(0, int(elapsed_seconds // interval_seconds)))
+                inflation_mult = 1.0 + settings.INFLATION_RATE_PER_INTERVAL * intervals
+                quest.locked_reward = round(g.reward_points * inflation_mult)
+            await db.commit()
     except Exception as e:
         error_msg = str(e)
         return HTMLResponse(
@@ -924,7 +1088,15 @@ async def web_accept_challenge(
         '<div id="roulette-modal-container" hx-swap-oob="innerHTML"></div>'
         '<div id="completion-modal-container" hx-swap-oob="innerHTML"></div>'
     )
-    return HTMLResponse(content=board_html + clear_modal)
+    stats_bar_html = templates.get_template("partials/user_stats_bar.html").render(
+        {
+            "current_user": ctx["current_user"],
+            "user_active_count": ctx["user_active_count"],
+            "max_active_quests": ctx["max_active_quests"],
+            "is_oob": True,
+        }
+    )
+    return HTMLResponse(content=board_html + clear_modal + stats_bar_html)
 
 
 @router.get("/quests/{quest_id}/completion_modal", response_class=HTMLResponse)
@@ -992,13 +1164,36 @@ async def web_drop_quest(
     if quest.user_id != caller_uid:
         raise HTTPException(status_code=403, detail="Вы не можете взаимодействовать с чужим квестом!")
 
-    await drop_quest(db, quest_id=quest_id, user_id=caller_uid)
+    refreshed_quest, penalty, used_free_drop = await drop_quest(db, quest_id=quest_id, user_id=caller_uid)
 
     is_htmx = request.headers.get("hx-request") == "true"
     if is_htmx:
         ctx = await get_board_context(request, caller_uid, db)
         board_html = templates.get_template("partials/board_content.html").render(ctx)
-        return HTMLResponse(content=board_html)
+        clear_modal = (
+            '<div id="roulette-modal-container" hx-swap-oob="innerHTML"></div>'
+            '<div id="completion-modal-container" hx-swap-oob="innerHTML"></div>'
+            '<div id="challenges-modal" hx-swap-oob="delete"></div>'
+        )
+        stats_bar_html = templates.get_template("partials/user_stats_bar.html").render(
+            {
+                "current_user": ctx["current_user"],
+                "user_active_count": ctx["user_active_count"],
+                "max_active_quests": ctx["max_active_quests"],
+                "is_oob": True,
+            }
+        )
+        if used_free_drop:
+            toast_msg = f"Квест сброшен! Использован 1 бесплатный сброс (осталось: {ctx['current_user'].free_drops})."
+            toast_type = "info"
+        else:
+            toast_msg = f"Квест сброшен! Бесплатных сбросов нет — списан штраф -{penalty} очков."
+            toast_type = "warning"
+
+        toast_hdr = json.dumps({"showToast": {"type": toast_type, "message": toast_msg}})
+        resp = HTMLResponse(content=board_html + clear_modal + stats_bar_html)
+        resp.headers["HX-Trigger"] = toast_hdr
+        return resp
 
     return Response(status_code=200, content="")
 
@@ -1061,8 +1256,20 @@ async def web_complete_quest(
     clear_modal = (
         '<div id="completion-modal-container" hx-swap-oob="innerHTML"></div>'
         '<div id="roulette-modal-container" hx-swap-oob="innerHTML"></div>'
+        '<div id="challenges-modal" hx-swap-oob="delete"></div>'
     )
-    return HTMLResponse(content=board_html + clear_modal)
+    stats_bar_html = templates.get_template("partials/user_stats_bar.html").render(
+        {
+            "current_user": ctx["current_user"],
+            "user_active_count": ctx["user_active_count"],
+            "max_active_quests": ctx["max_active_quests"],
+            "is_oob": True,
+        }
+    )
+    toast_hdr = json.dumps({"showToast": {"type": "success", "message": f"Контракт успешно сдан! Начислено +{points_earned} очков."}})
+    resp = HTMLResponse(content=board_html + clear_modal + stats_bar_html)
+    resp.headers["HX-Trigger"] = toast_hdr
+    return resp
 
 
 @router.post("/quests/{quest_id}/reroll", response_class=HTMLResponse)
@@ -1127,6 +1334,11 @@ async def web_reroll_quest(
     await db.refresh(user)
 
     winning_game = updated_quest.game
+    if winning_game and winning_game.steam_appid:
+        resolved_img = resolve_single_image_url(winning_game.steam_appid, winning_game.image_url)
+        if resolved_img and resolved_img != winning_game.image_url:
+            winning_game.image_url = resolved_img
+            await db.flush()
     winning_title = winning_game.title if winning_game else "Новая игра"
 
     # Если direct=True (например, прямой вызов из тестов без модального окна)
@@ -1135,35 +1347,90 @@ async def web_reroll_quest(
         board_html = templates.get_template("partials/board_content.html").render(ctx)
         return HTMLResponse(content=board_html)
 
-    # 3. Формируем барабан рулетки из игр этой категории для красивой анимации вращения
+    # 3. Формируем барабан рулетки из games.db парсера для красивой анимации вращения
     fake_needed = settings.ROULETTE_OPTIONS_COUNT - 1
-    fake_stmt = (
-        select(Game.title)
-        .where(Game.category == category, Game.title != winning_title)
-        .order_by(func.random())
-        .limit(fake_needed)
+    exclude_set = {winning_title}
+    reel_candidates = query_games_from_parser_db(
+        tag=updated_quest.tag_filter,
+        min_hours=updated_quest.min_hltb_hours,
+        max_hours=updated_quest.max_hltb_hours,
+        min_rating=updated_quest.min_rating,
+        exclude_titles=exclude_set,
+        limit=fake_needed,
     )
-    fake_titles = list((await db.execute(fake_stmt)).scalars().all())
 
-    if len(fake_titles) < fake_needed:
-        remaining = fake_needed - len(fake_titles)
+    fake_games: list[dict[str, Any]] = []
+    for cand in reel_candidates:
+        cand_img = cand.get("image_url") or (f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{cand.get('steam_appid')}/header.jpg" if cand.get("steam_appid") else None)
+        fake_games.append({
+            "title": cand["title"],
+            "image_url": cand_img,
+            "genre": cand.get("tags", ["Игра"])[0] if cand.get("tags") else "Экшен",
+            "hltb_hours": cand.get("hltb_main_story_hours") or 0.0,
+            "developer": cand.get("developer"),
+            "review_percentage": cand.get("review_percentage"),
+        })
+
+    # Дополняем из parser/data/games.db если нужно
+    if len(fake_games) < fake_needed:
+        remaining = fake_needed - len(fake_games)
+        more_candidates = query_games_from_parser_db(
+            exclude_titles={winning_title}.union({g["title"] for g in fake_games}),
+            limit=remaining,
+        )
+        for cand in more_candidates:
+            cand_img = cand.get("image_url") or (f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{cand.get('steam_appid')}/header.jpg" if cand.get("steam_appid") else None)
+            if cand_img:
+                fake_games.append({
+                    "title": cand["title"],
+                    "image_url": cand_img,
+                    "genre": cand.get("tags", ["Игра"])[0] if cand.get("tags") else "Экшен",
+                    "hltb_hours": cand.get("hltb_main_story_hours") or 0.0,
+                    "developer": cand.get("developer"),
+                    "review_percentage": cand.get("review_percentage"),
+                })
+
+    # Дополняем из hpg.db с гарантированной картинкой
+    if len(fake_games) < fake_needed:
+        remaining = fake_needed - len(fake_games)
         fallback_stmt = (
-            select(Game.title)
-            .where(Game.title != winning_title, Game.title.not_in(fake_titles))
+            select(Game)
+            .where(
+                Game.title != winning_title,
+                Game.title.not_in([g["title"] for g in fake_games]),
+                Game.image_url.is_not(None),
+                Game.image_url != "",
+            )
             .order_by(func.random())
             .limit(remaining)
         )
-        more_titles = list((await db.execute(fallback_stmt)).scalars().all())
-        fake_titles.extend(more_titles)
+        fb_games = list((await db.execute(fallback_stmt)).scalars().all())
+        for fbg in fb_games:
+            fake_games.append({
+                "title": fbg.title,
+                "image_url": fbg.image_url,
+                "genre": fbg.genre,
+                "hltb_hours": fbg.hltb_hours,
+                "developer": fbg.developer,
+                "review_percentage": fbg.review_percentage,
+            })
 
-    while len(fake_titles) < fake_needed:
-        fake_titles.append(f"Игра #{len(fake_titles) + 1}")
+    random.shuffle(fake_games)
 
-    random.shuffle(fake_titles)
+    winning_dict = {
+        "title": winning_game.title,
+        "image_url": winning_game.image_url,
+        "genre": winning_game.genre,
+        "hltb_hours": winning_game.hltb_hours,
+        "developer": winning_game.developer,
+        "review_percentage": winning_game.review_percentage,
+    }
+
     penultimate_idx = max(0, settings.ROULETTE_OPTIONS_COUNT - 2)
-    roulette_titles = fake_titles[:penultimate_idx] + [winning_title] + fake_titles[penultimate_idx:fake_needed]
-    roulette_titles = roulette_titles[: settings.ROULETTE_OPTIONS_COUNT]
-    winning_index = roulette_titles.index(winning_title)
+    roulette_games = fake_games[:penultimate_idx] + [winning_dict] + fake_games[penultimate_idx:fake_needed]
+    roulette_games = roulette_games[: settings.ROULETTE_OPTIONS_COUNT]
+    winning_index = penultimate_idx
+    roulette_titles = [g["title"] for g in roulette_games]
 
     reroll_penalty_pct = int(settings.REROLL_PENALTY_RATE * updated_quest.reroll_count * 100)
 
@@ -1178,11 +1445,13 @@ async def web_reroll_quest(
             "winning_game": winning_game,
             "winning_title": winning_title,
             "candidate_reward": updated_quest.locked_reward,
+            "penalty_points": winning_game.penalty_points if winning_game else 50,
             "category_display": category_display,
             "reroll_penalty_pct": reroll_penalty_pct,
+            "roulette_games": roulette_games,
             "roulette_titles": roulette_titles,
             "winning_index": winning_index,
-            "options_count": len(roulette_titles),
+            "options_count": len(roulette_games),
             "duration_sec": 3.5,
         }
     )
@@ -1191,50 +1460,19 @@ async def web_reroll_quest(
     attach_underdog_flags(all_users)
 
     # OOB обновление полосы ресурсов в шапке сайта, чтобы рероллы сразу уменьшились (напр. 🎲 0)
-    underdog_badge = ""
-    if getattr(user, "is_underdog", False):
-        underdog_badge = (
-            '<div class="ml-1 pl-3 border-l-2 border-red-800/80 flex items-center">'
-            '<span class="px-3 py-1 text-xs sm:text-sm font-heading font-black uppercase tracking-wider rounded bg-red-950 text-red-200 border border-red-600 shadow-[0_0_12px_rgba(220,38,38,0.5)] animate-pulse flex items-center gap-1" title="Отставание > 2000 очков: +20% бонус к награде!">'
-            '🔥 Андердог</span></div>'
-        )
-
-    stats_oob = (
-        f'<div id="user-stats-bar" hx-swap-oob="outerHTML" class="flex items-center gap-3 sm:gap-4 bg-[#1e1009]/95 px-4 py-2.5 rounded-xl border-2 border-[#542d17] shadow-[inset_0_2px_6px_rgba(0,0,0,0.7),0_4px_12px_rgba(0,0,0,0.6)]">'
-        f'<a href="/profile" class="flex items-center gap-2.5 group cursor-pointer" title="Личный кабинет">'
-        f'<div class="relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden border-2 border-amber-600/70 group-hover:border-amber-400 group-hover:scale-105 transition shadow bg-[#160b05] flex-shrink-0">'
-        f'<img src="{user.avatar_url or "/static/avatars/default.svg"}" alt="{user.username}" class="w-full h-full object-cover">'
-        f'</div>'
-        f'<div class="flex flex-col">'
-        f'<span class="text-xs font-heading uppercase font-bold text-[#cfb69e] tracking-wider group-hover:text-amber-300 transition">Игрок</span>'
-        f'<span class="text-sm sm:text-base font-heading font-extrabold text-[#f5ebd4] group-hover:text-amber-200 transition flex items-center gap-1">'
-        f'👤 {user.username}</span></div></a>'
-        f'<div class="h-9 w-px bg-[#4a2614]"></div>'
-        f'<div class="flex flex-col items-center">'
-        f'<span class="text-xs font-heading uppercase font-bold text-[#cfb69e] tracking-wider">Очки</span>'
-        f'<span class="text-base sm:text-lg font-heading font-black text-amber-300 flex items-center gap-1 drop-shadow">'
-        f'<span class="text-amber-400">★</span> {user.total_score}</span></div>'
-        f'<div class="h-9 w-px bg-[#4a2614]"></div>'
-        f'<div class="flex flex-col items-center" title="Бесплатные сбросы квестов">'
-        f'<span class="text-xs font-heading uppercase font-bold text-[#cfb69e] tracking-wider">Сбросы</span>'
-        f'<span class="text-base sm:text-lg font-heading font-black text-cyan-300 flex items-center gap-1">'
-        f'🛡️ {user.free_drops}</span></div>'
-        f'<div class="h-9 w-px bg-[#4a2614]"></div>'
-        f'<div class="flex flex-col items-center" title="Попытки перебросить рулетку игр">'
-        f'<span class="text-xs font-heading uppercase font-bold text-[#cfb69e] tracking-wider">Рероллы</span>'
-        f'<span class="text-base sm:text-lg font-heading font-black text-amber-400 flex items-center gap-1">'
-        f'🎲 {user.rerolls_left}</span></div>'
-        f'{underdog_badge}'
-        f'<div class="h-9 w-px bg-[#4a2614] hidden sm:block"></div>'
-        f'<div class="flex items-center gap-1.5 pl-1">'
-        f'<a href="/profile" class="p-2 sm:px-2.5 sm:py-1.5 rounded-lg bg-[#2e170c] hover:bg-[#452212] border border-[#6b3c1d] text-xs font-heading font-bold text-amber-300 hover:text-white transition flex items-center gap-1" title="Личный кабинет">'
-        f'<span>⚙️</span><span class="hidden md:inline">Кабинет</span></a>'
-        f'<a href="/logout" class="p-2 sm:px-2.5 sm:py-1.5 rounded-lg bg-red-950/80 hover:bg-red-900 border border-red-700/80 text-xs font-heading font-bold text-red-200 hover:text-white transition flex items-center gap-1" title="Выйти из аккаунта">'
-        f'<span>🚪</span><span class="hidden md:inline">Выйти</span></a>'
-        f'</div></div>'
+    stats_oob = templates.get_template("partials/user_stats_bar.html").render(
+        {
+            "current_user": user,
+            "user_active_count": 1,
+            "max_active_quests": settings.MAX_ACTIVE_QUESTS,
+            "is_oob": True,
+        }
     )
 
-    return HTMLResponse(content=modal_html + stats_oob)
+    toast_hdr = json.dumps({"showToast": {"type": "info", "message": f"Реролл выполнен! Списан 1 реролл (осталось: {user.rerolls_left})."}})
+    resp = HTMLResponse(content=modal_html + stats_oob)
+    resp.headers["HX-Trigger"] = toast_hdr
+    return resp
 
 
 
@@ -1244,7 +1482,7 @@ async def web_refill_board(
     db: AsyncSession = Depends(get_db),
 ):
     """Refills board to 12 slots and returns updated available quest cards grid."""
-    await refill_board(db)
+    await refill_board(db, force_flush_oldest=True)
     db_available = await get_quests(db, status=QuestStatus.AVAILABLE)
     available_quests = [QuestResponse.model_validate(q) for q in db_available]
 
@@ -1256,11 +1494,24 @@ async def web_refill_board(
         users = await get_or_seed_users(db)
         current_user = users[0] if users else None
 
-    return templates.TemplateResponse(
+    active_count = 0
+    if current_user:
+        active_stmt = select(func.count(Quest.id)).where(
+            Quest.user_id == current_user.id, Quest.status == QuestStatus.IN_PROGRESS
+        )
+        active_count = (await db.execute(active_stmt)).scalar() or 0
+
+    toast_hdr = json.dumps({"showToast": {"type": "info", "message": "Конвейер квестов пополнен и обновлен!"}})
+    resp = templates.TemplateResponse(
         "partials/board_grid.html",
         {
             "request": request,
             "available_quests": available_quests,
             "current_user": current_user,
+            "user_active_count": active_count,
+            "user_can_take_quest": active_count < settings.MAX_ACTIVE_QUESTS,
+            "max_active_quests": settings.MAX_ACTIVE_QUESTS,
         },
     )
+    resp.headers["HX-Trigger"] = toast_hdr
+    return resp

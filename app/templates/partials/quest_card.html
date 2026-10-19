@@ -36,8 +36,10 @@
     {% set seal_bg = "bg-gradient-to-br from-[#7a482b] via-[#5c341e] to-[#3a2012] text-amber-100 border border-[#a66842] shadow-[0_3px_8px_rgba(0,0,0,0.6)]" %}
 {% endif %}
 
+{% set is_own_quest = (is_active and current_user and quest.user_id == current_user.id) %}
+
 <div id="quest-card-{{ quest.id }}" 
-     class="quest-card relative flex flex-col justify-between p-5 sm:p-6 rounded-md border-2 transition-all duration-300 {{ card_rot }} hover:rotate-0 hover:-translate-y-1.5 hover:scale-[1.02] hover:z-30 cursor-default {{ paper_bg }}">
+     class="quest-card relative flex flex-col justify-between p-5 sm:p-6 rounded-md border-2 transition-all duration-300 {{ card_rot }} sm:hover:rotate-0 sm:hover:-translate-y-1.5 sm:hover:scale-[1.02] sm:hover:z-30 cursor-default {{ paper_bg }} {% if is_own_quest %}ring-2 ring-amber-500 shadow-[0_0_24px_rgba(245,158,11,0.35)]{% endif %}">
 
     <!-- ЭЛЕМЕНТ КРЕПЛЕНИЯ: Кованый железный гвоздь вверху по центру -->
     <div class="absolute -top-3 left-1/2 -translate-x-1/2 z-20 pointer-events-none flex flex-col items-center">
@@ -98,19 +100,79 @@
     <!-- ТЕЛО КАРТОЧКИ: Крупный контрастный текст -->
     <div class="flex-1 my-2 space-y-2">
         {% if is_active %}
-            {# КВЕСТ В РАБОТЕ: Игра раскрыта #}
-            <div class="space-y-1.5">
-                <div class="flex items-center gap-1.5 text-xs sm:text-sm font-heading uppercase tracking-wider text-emerald-800 font-black">
-                    <span>🎮</span>
-                    <span>Квест активен &bull; Игра выбрана</span>
+            {# КВЕСТ В РАБОТЕ: Игра раскрыта с обложкой и полным описанием #}
+            {% set active_game = quest.current_rolled_game if quest.current_rolled_game else quest.game %}
+            <div class="space-y-2">
+                
+                <!-- Заголовок активного квеста -->
+                <div class="flex items-center justify-between gap-2">
+                    <div class="flex items-center gap-1.5 text-xs sm:text-sm font-heading uppercase tracking-wider text-emerald-800 font-black">
+                        <span>🎮</span>
+                        <span>Квест активен &bull; Игра выбрана</span>
+                    </div>
+                    {% if active_game and active_game.review_percentage %}
+                    <span class="px-2 py-0.5 rounded bg-emerald-900 text-emerald-100 text-xs font-heading font-black flex items-center gap-1 shadow-sm">
+                        <span>👍</span> <span>{{ active_game.review_percentage|round|int }}%</span>
+                    </span>
+                    {% endif %}
                 </div>
-                <h3 class="text-xl sm:text-2xl font-heading font-black tracking-tight leading-snug" title="{{ quest.game.title if quest.game else 'Неизвестно' }}">
-                    {{ quest.game.title if quest.game else 'Секретная игра' }}
+
+                <!-- Обложка игры из Steam/games.db -->
+                {% if active_game and active_game.image_url %}
+                <div class="relative w-full h-32 sm:h-36 rounded-lg overflow-hidden border-2 border-black/25 shadow-md group bg-[#1a0f07]">
+                    <img src="{{ active_game.image_url }}" alt="{{ active_game.title }}"
+                         onerror="this.style.opacity='0.2';"
+                         class="w-full h-full object-cover">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent"></div>
+                    <div class="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between text-xs text-stone-200 font-serif italic">
+                        {% if active_game.developer %}
+                        <span class="truncate font-sans font-bold">Студия: {{ active_game.developer }}</span>
+                        {% endif %}
+                        {% if active_game.release_date %}
+                        <span>{{ active_game.release_date }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                <h3 class="text-xl sm:text-2xl font-heading font-black tracking-tight leading-snug" title="{{ active_game.title if active_game else 'Неизвестно' }}">
+                    {{ active_game.title if active_game else 'Секретная игра' }}
                 </h3>
-                <div class="text-lg sm:text-xl font-handwriting font-bold leading-tight flex items-center gap-1.5">
+
+                <!-- Жанр и теги -->
+                <div class="flex items-center gap-2 text-sm sm:text-base font-handwriting font-bold leading-tight flex-wrap">
                     <span class="opacity-80">Жанр:</span>
-                    <span class="underline decoration-dotted font-extrabold">{{ quest.game.genre if quest.game else 'Экшен' }}</span>
+                    <span class="underline decoration-dotted font-extrabold text-[#3a1d0f]">{{ active_game.genre if active_game else 'Экшен' }}</span>
                 </div>
+
+                {% if active_game and active_game.tags %}
+                <div class="flex items-center gap-1 flex-wrap pt-0.5">
+                    {% for tag in active_game.tags[:4] %}
+                    <span class="px-2 py-0.5 rounded bg-black/10 text-[#301608] text-[11px] font-mono border border-black/10">
+                        {{ tag }}
+                    </span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                <!-- Внешние ссылки Steam и HLTB -->
+                <div class="flex items-center gap-2 pt-1">
+                    {% if active_game and active_game.steam_url %}
+                    <a href="{{ active_game.steam_url }}" target="_blank" rel="noopener noreferrer"
+                       class="px-2.5 py-1 rounded bg-[#1b2838] hover:bg-[#2a475e] text-blue-200 text-xs font-heading font-black border border-blue-900/60 transition flex items-center gap-1 shadow-sm">
+                        <span>🎮 Steam</span>
+                        <span>↗</span>
+                    </a>
+                    {% endif %}
+                    {% if active_game and active_game.hltb_url %}
+                    <a href="{{ active_game.hltb_url }}" target="_blank" rel="noopener noreferrer"
+                       class="px-2.5 py-1 rounded bg-[#2b180d] hover:bg-[#452614] text-amber-200 text-xs font-heading font-black border border-amber-700/60 transition flex items-center gap-1 shadow-sm">
+                        <span>⏱️ HLTB</span>
+                        <span>↗</span>
+                    </a>
+                    {% endif %}
+                </div>
+
                 {% if card_type_str == 'SANTA_TOP' %}
                     <div class="text-sm sm:text-base font-heading font-bold text-amber-900 bg-amber-200/80 px-2.5 py-1 rounded border border-amber-500/50 mt-1">
                         🌟 Бонус Санты (+10% к награде)
@@ -161,14 +223,15 @@
                 </h3>
 
                 <!-- Условия с четким высоким контрастом -->
-                <div class="p-3 rounded-lg bg-black/10 border border-black/15 space-y-1.5 font-handwriting text-lg sm:text-xl font-bold">
+                <div class="p-3 rounded-lg bg-black/10 border border-black/15 space-y-1 font-handwriting text-lg sm:text-xl font-bold">
                     <div class="flex items-center gap-2">
                         <span class="text-amber-900">🎯</span>
-                        <span>Жанр игры: {{ quest.game.genre if quest.game else 'Разнообразный' }}</span>
+                        <span>{{ quest.display_condition|safe }}</span>
                     </div>
-                    {% if quest.game and quest.game.preset_name and card_type_str != 'PRESET' and card_type_str != 'SERIES' and card_type_str != 'EMULATOR' %}
-                    <div class="text-base sm:text-lg text-[#3d2010] italic font-bold">
-                        {{ quest.game.preset_name }}
+                    {% if quest.min_rating %}
+                    <div class="text-sm font-sans font-black text-emerald-900 flex items-center gap-1 pt-0.5">
+                        <span>⭐</span>
+                        <span>Рейтинг Steam: от {{ quest.min_rating|round|int }}%</span>
                     </div>
                     {% endif %}
                 </div>
@@ -223,7 +286,15 @@
     <div class="mt-4 pt-1">
         {% if not is_active %}
             {# Кнопка взятия квеста / запуск рулетки #}
-            {% if card_type_str == 'SANTA' or quest.is_santa_box %}
+            {% if user_can_take_quest is defined and not user_can_take_quest %}
+                {# Лимит активных слотов исчерпан: кнопка отключена #}
+                <button disabled
+                        title="У вас уже максимум активных квестов ({{ user_active_count|default(1) }}/{{ max_active_quests|default(1) }}). Завершите или сбросьте текущий квест перед взятием нового."
+                        class="w-full py-3 px-4 rounded-lg font-heading font-black text-xs sm:text-sm uppercase tracking-wider text-stone-500 bg-stone-900 border-2 border-stone-800 opacity-60 cursor-not-allowed flex items-center justify-center gap-2 shadow-inner">
+                    <span>🔒</span>
+                    <span>СЛОТ ЗАНЯТ ({{ user_active_count|default(1) }}/{{ max_active_quests|default(1) }})</span>
+                </button>
+            {% elif card_type_str == 'SANTA' or quest.is_santa_box %}
             <button hx-post="/quests/{{ quest.id }}/take?user_id={{ current_user.id if current_user else 1 }}"
                     hx-target="#roulette-modal-container"
                     hx-swap="innerHTML"
@@ -246,8 +317,21 @@
             <div class="space-y-2.5">
                 <!-- Игрок, взявший квест -->
                 <div class="text-sm sm:text-base font-heading font-black text-[#3d2010] flex items-center justify-between bg-black/15 px-3 py-1.5 rounded border border-black/15">
-                    <span class="flex items-center gap-1.5">👤 {{ quest.user.username if quest.user else 'Игрок' }}</span>
-                    <span class="text-emerald-800 font-black uppercase text-xs sm:text-sm">В процессе</span>
+                    {% if current_user and quest.user_id == current_user.id %}
+                        <span class="flex items-center gap-1.5 text-amber-950 font-black">
+                            <span class="text-amber-600">⚔️</span> ВЫ ({{ quest.user.username if quest.user else 'Игрок' }})
+                        </span>
+                        <span class="px-2 py-0.5 rounded bg-amber-800 text-amber-100 font-black uppercase text-[11px] sm:text-xs tracking-wider shadow-sm">
+                            Ваш контракт
+                        </span>
+                    {% else %}
+                        <span class="flex items-center gap-1.5 text-stone-700">
+                            <span>👤</span> {{ quest.user.username if quest.user else 'Игрок' }}
+                        </span>
+                        <span class="text-stone-600 font-bold uppercase text-[11px] sm:text-xs">
+                            Соперник
+                        </span>
+                    {% endif %}
                 </div>
 
                 {% if current_user and quest.user_id == current_user.id %}
@@ -269,13 +353,25 @@
                         </button>
                         {% endif %}
 
+                        {% if current_user and current_user.free_drops > 0 %}
                         <button hx-post="/quests/{{ quest.id }}/drop"
                                 hx-target="#main-board"
                                 hx-swap="outerHTML"
-                                hx-confirm="Сбросить квест? Вы можете потерять бесплатный сброс или очки!"
-                                class="py-2.5 px-3 rounded-lg font-heading font-black text-sm sm:text-base text-white bg-gradient-to-b from-stone-700 to-stone-900 hover:from-stone-600 hover:to-stone-800 border border-stone-600 shadow-md active:scale-95 transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer">
-                            ❌ Сбросить
+                                hx-confirm="Сбросить квест? Будет потрачен 1 бесплатный сброс (останется: {{ current_user.free_drops - 1 }})."
+                                title="Потратить 1 бесплатный сброс (в наличии: {{ current_user.free_drops }})"
+                                class="py-2.5 px-3 rounded-lg font-heading font-black text-xs sm:text-sm text-cyan-200 bg-gradient-to-b from-cyan-950 to-slate-950 hover:from-cyan-900 hover:to-slate-900 border border-cyan-700 shadow-md active:scale-95 transition-all text-center flex items-center justify-center gap-1 cursor-pointer">
+                            🛡️ Сброс ({{ current_user.free_drops }})
                         </button>
+                        {% else %}
+                        <button hx-post="/quests/{{ quest.id }}/drop"
+                                hx-target="#main-board"
+                                hx-swap="outerHTML"
+                                hx-confirm="Внимание! Бесплатных сбросов нет (0). При сбросе квеста будет списан штраф {{ quest.game.penalty_points if quest.game else 50 }} очков. Сбросить квест?"
+                                title="Штраф при сбросе: -{{ quest.game.penalty_points if quest.game else 50 }} очков"
+                                class="py-2.5 px-3 rounded-lg font-heading font-black text-xs sm:text-sm text-red-200 bg-gradient-to-b from-red-950 to-stone-950 hover:from-red-900 hover:to-stone-900 border border-red-700 shadow-md active:scale-95 transition-all text-center flex items-center justify-center gap-1 cursor-pointer">
+                            ⚠️ Сброс (-{{ quest.game.penalty_points if quest.game else 50 }}★)
+                        </button>
+                        {% endif %}
                     </div>
 
                     <!-- Реролл игры внутри квеста (доступен только владельцу) -->

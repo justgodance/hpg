@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     # Game balance & rules configuration
     MAX_BOARD_SIZE: int = Field(default=12, description="Целевое количество доступных квестов на доске")
+    MAX_ACTIVE_QUESTS: int = Field(default=1, description="Максимальное количество активных квестов на одного игрока")
     DEFAULT_FREE_DROPS: int = Field(default=2, description="Начальное количество бесплатных сбросов квестов без штрафа")
     DEFAULT_REROLLS_LEFT: int = Field(default=1, description="Начальное количество попыток реролла рулетки")
     QUESTS_PER_REROLL_RECHARGE: int = Field(default=3, description="Количество сданных квестов для перезарядки 1 реролла")
@@ -20,6 +21,8 @@ class Settings(BaseSettings):
     # Dynamic inflation
     INFLATION_INTERVAL_HOURS: int = Field(default=24, description="Интервал инфляции в часах (каждые N часов)")
     INFLATION_RATE_PER_INTERVAL: float = Field(default=0.2, description="Множитель инфляции за интервал (+20%)")
+    MAX_INFLATION_INTERVALS: int = Field(default=3, description="Максимальное количество интервалов инфляции (Hard Cap = +60%)")
+    BOARD_AUTO_ROTATE_HOURS: int = Field(default=72, description="Время жизни невостребованного квеста на доске в часах (TTL)")
 
     # Modifiers & Penalties
     REROLL_PENALTY_RATE: float = Field(default=0.1, description="Штраф к награде за каждый реролл (-10%)")
@@ -32,6 +35,10 @@ class Settings(BaseSettings):
     ROULETTE_DURATION_SEC: int = Field(default=4, description="Длительность вращения рулетки в секундах")
 
     # External data file paths
+    PARSER_DB_PATH: Path = Field(
+        default=BASE_DIR / "parser" / "data" / "games.db",
+        description="Путь к SQLite базе данных парсера Steam/HLTB",
+    )
     GAMES_DATA_PATH: Path = Field(
         default=BASE_DIR / "data" / "games.json",
         description="Путь к JSON-файлу с каталогом игр",

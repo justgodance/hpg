@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import enum
 from typing import TYPE_CHECKING, Optional
-from sqlalchemy import Float, Integer, String
+from sqlalchemy import Float, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -25,6 +25,7 @@ class Game(Base):
     __tablename__ = "games"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    steam_appid: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     category: Mapped[str] = mapped_column(
         String(50),
@@ -37,6 +38,20 @@ class Game(Base):
     hltb_hours: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     reward_points: Mapped[int] = mapped_column(Integer, default=100, nullable=False)
     penalty_points: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
+
+    # Rich metadata from Steam / HLTB Parser (parser/data/games.db)
+    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    developer: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    tags: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
+    review_percentage: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    review_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    review_desc: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    release_date: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    steam_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    hltb_game_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    hltb_game_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    hltb_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    hltb_status: Mapped[Optional[str]] = mapped_column(String(50), default="found", nullable=True)
 
     quests: Mapped[list["Quest"]] = relationship(
         foreign_keys="[Quest.game_id]",

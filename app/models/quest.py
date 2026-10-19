@@ -7,6 +7,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -65,6 +66,11 @@ class Quest(Base):
 
     # Card categories & Santa mystery box
     card_type: Mapped[str] = mapped_column(String(50), default="STEAM", nullable=False, index=True)
+    card_title: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    tag_filter: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    min_hltb_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    max_hltb_hours: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    min_rating: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     is_santa_box: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Roulette & Underdog mechanics

@@ -24,13 +24,28 @@ class QuestTakeRequest(BaseModel):
 
 class QuestGameRead(BaseModel):
     id: int
+    steam_appid: int | None = None
     title: str
     category: str = "STEAM"
     genre: str = "Экшен"
     preset_name: str | None = None
-    hltb_hours: float
-    reward_points: int
-    penalty_points: int
+    hltb_hours: float = 0.0
+    reward_points: int = 100
+    penalty_points: int = 50
+
+    # Rich metadata from Steam / HLTB Parser (parser/data/games.db)
+    image_url: str | None = None
+    developer: str | None = None
+    tags: list[str] | None = None
+    review_percentage: float | None = None
+    review_count: int | None = None
+    review_desc: str | None = None
+    release_date: str | None = None
+    steam_url: str | None = None
+    hltb_game_id: int | None = None
+    hltb_game_name: str | None = None
+    hltb_url: str | None = None
+    hltb_status: str | None = "found"
 
     @computed_field
     @property
@@ -68,6 +83,11 @@ class QuestResponse(BaseModel):
 
     # Categories & Visual card types
     card_type: str = "STEAM"
+    card_title: str | None = None
+    tag_filter: str | None = None
+    min_hltb_hours: float | None = None
+    max_hltb_hours: float | None = None
+    min_rating: float | None = None
     is_santa_box: bool = False
 
     # Balance & roulette mechanics
@@ -106,6 +126,9 @@ class QuestResponse(BaseModel):
         if self.is_revealed and active_game:
             return active_game.title
 
+        if self.card_title:
+            return self.card_title
+
         if self.card_type == "SANTA" or self.is_santa_box:
             return "Секретный Подарок (50/50)"
 
@@ -129,12 +152,19 @@ class QuestResponse(BaseModel):
     def display_condition(self) -> str:
         """Показывает жанр и условия квеста."""
         active_game = self.current_rolled_game or self.game
-        if not active_game:
-            return "Условия квеста формируются..."
 
         if self.card_type == "SANTA" or self.is_santa_box:
             return "50% шанс на Топ-хит (+10%) или Уголёк (+50%)"
-        elif self.card_type == "PRESET":
+
+        if self.tag_filter and self.min_hltb_hours is not None:
+            return f"Тег: {self.tag_filter} &bull; HLTB: {int(self.min_hltb_hours) if self.min_hltb_hours.is_integer() else self.min_hltb_hours}+ ч"
+        elif self.tag_filter:
+            return f"Тег: {self.tag_filter} &bull; Каталог Steam"
+
+        if not active_game:
+            return "Условия квеста формируются..."
+
+        if self.card_type == "PRESET":
             return f"Жанр: {active_game.genre} &bull; Пресет игр"
         elif self.card_type == "SERIES":
             return f"Жанр: {active_game.genre} &bull; Связанная франшиза"
@@ -151,11 +181,18 @@ class QuestResponse(BaseModel):
     def display_time(self) -> str:
         """На бирже отображается часовой диапазон (например, 10-20 ч). При взятии в работу раскрывается точное время."""
         active_game = self.current_rolled_game or self.game
+        if self.is_revealed and active_game:
+            return f"{active_game.hltb_hours} ч"
+
+        if self.min_hltb_hours is not None and self.max_hltb_hours is not None:
+            return f"{int(self.min_hltb_hours)}–{int(self.max_hltb_hours)} ч"
+        elif self.min_hltb_hours is not None:
+            return f"{int(self.min_hltb_hours)}+ ч"
+        elif self.max_hltb_hours is not None:
+            return f"до {int(self.max_hltb_hours)} ч"
+
         if not active_game:
             return "?? ч"
-
-        if self.is_revealed:
-            return f"{active_game.hltb_hours} ч"
 
         return active_game.time_range
 
@@ -180,7 +217,7 @@ class QuestResponse(BaseModel):
         spawned = self.spawned_at if self.spawned_at.tzinfo else self.spawned_at.replace(tzinfo=timezone.utc)
         elapsed_seconds = (now - spawned).total_seconds()
         interval_seconds = settings.INFLATION_INTERVAL_HOURS * 3600
-        intervals = max(0, int(elapsed_seconds // interval_seconds))
+        intervals = min(settings.MAX_INFLATION_INTERVALS, max(0, int(elapsed_seconds // interval_seconds)))
 
         return round(base * (1.0 + settings.INFLATION_RATE_PER_INTERVAL * intervals))
 

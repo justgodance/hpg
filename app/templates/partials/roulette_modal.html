@@ -1,193 +1,512 @@
 {# templates/partials/roulette_modal.html #}
 
-{% set item_height = 80 %}
-{% set target_offset = (winning_index - 1) * item_height %}
-
 <div id="roulette-modal" 
-     class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 transition-all duration-300">
-
-    <style>
-        /* Анимация прокрутки барабана рулетки (Slot Machine Reel) */
-        @keyframes spinReel {
-            0% {
-                transform: translate3d(0, 0, 0);
-            }
-            100% {
-                transform: translate3d(0, -{{ target_offset }}px, 0);
-            }
-        }
-
-        .roulette-reel {
-            animation: spinReel {{ duration_sec }}s cubic-bezier(0.15, 0.9, 0.25, 1) forwards;
-            will-change: transform;
-        }
-
-        /* Появление блока подтверждения после завершения прокрутки */
-        @keyframes revealConfirmBlock {
-            0%, 75% {
-                opacity: 0;
-                transform: translateY(12px);
-                pointer-events: none;
-            }
-            100% {
-                opacity: 1;
-                transform: translateY(0);
-                pointer-events: auto;
-            }
-        }
-
-        .confirm-reveal {
-            animation: revealConfirmBlock {{ duration_sec }}s ease-out forwards;
-        }
-
-        @keyframes pointerPulse {
-            0%, 100% { transform: scale(1); filter: drop-shadow(0 0 5px rgba(245, 158, 11, 0.7)); }
-            50% { transform: scale(1.2); filter: drop-shadow(0 0 12px rgba(245, 158, 11, 0.95)); }
-        }
-
-        .pointer-animate {
-            animation: pointerPulse 1.2s ease-in-out infinite;
-        }
-    </style>
+     class="modal-open fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-2 sm:p-4 overflow-y-auto transition-all duration-300"
+     style="z-index: 9999;">
 
     <!-- Корпус Модального Окна (Ведьмачий резной ларец) -->
-    <div class="relative w-full max-w-lg bg-[#180e08] border-4 border-[#542d17] rounded-2xl shadow-[0_25px_70px_rgba(0,0,0,0.98)] p-6 sm:p-8 flex flex-col items-center text-center overflow-hidden"
+    <div class="relative w-full max-w-4xl my-auto max-h-[96vh] overflow-y-auto bg-[#180e08] border-4 border-[#542d17] rounded-2xl shadow-[0_25px_70px_rgba(0,0,0,0.98)] p-3 sm:p-6 flex flex-col items-center text-center"
+         style="background-color: #180e08; border-color: #542d17; min-height: 640px;"
          onclick="event.stopPropagation()">
         
         <!-- Железные заклепки по углам ларца -->
-        <span class="absolute top-3 left-3 w-3.5 h-3.5 rounded-full bg-gradient-to-br from-stone-400 to-stone-800 border border-stone-600 shadow"></span>
-        <span class="absolute bottom-3 left-3 w-3.5 h-3.5 rounded-full bg-gradient-to-br from-stone-400 to-stone-800 border border-stone-600 shadow"></span>
-        <span class="absolute bottom-3 right-3 w-3.5 h-3.5 rounded-full bg-gradient-to-br from-stone-400 to-stone-800 border border-stone-600 shadow"></span>
+        <span class="absolute top-3 left-3 w-3.5 h-3.5 rounded-full bg-gradient-to-br from-stone-400 to-stone-800 border border-stone-600 shadow pointer-events-none"></span>
+        <span class="absolute bottom-3 left-3 w-3.5 h-3.5 rounded-full bg-gradient-to-br from-stone-400 to-stone-800 border border-stone-600 shadow pointer-events-none"></span>
+        <span class="absolute bottom-3 right-3 w-3.5 h-3.5 rounded-full bg-gradient-to-br from-stone-400 to-stone-800 border border-stone-600 shadow pointer-events-none"></span>
 
-        <!-- Кнопка быстрого закрытия модалки без принятия контракта -->
+        <!-- Кнопка быстрого закрытия модалки -->
         <button hx-get="/board"
                 hx-target="#main-board"
                 hx-swap="outerHTML"
-                class="absolute top-3 right-3 w-8 h-8 rounded-full bg-[#2a160d] border border-[#6b3a1d] text-[#e0cfbe] hover:text-white hover:border-amber-500 hover:bg-[#3d2013] text-lg font-black flex items-center justify-center transition-all cursor-pointer z-30 shadow"
-                title="Отказаться и закрыть">
+                onclick="document.getElementById('roulette-modal').remove()"
+                class="absolute top-3 right-3 w-9 h-9 rounded-full bg-[#2a160d] border border-[#6b3a1d] text-[#e0cfbe] hover:text-white hover:border-amber-500 hover:bg-[#3d2013] text-xl font-black flex items-center justify-center transition-all cursor-pointer z-30 shadow"
+                title="Свернуть окно (квест останется в вашем активном слоте)">
             ✕
         </button>
 
         <!-- Заголовок Рулетки -->
-        <div class="mb-5 space-y-2">
-            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#2a160d] border border-[#69381c] text-amber-300 text-sm sm:text-base font-heading font-black tracking-widest uppercase shadow-inner">
-                <span>🎲 {% if is_reroll %}РЕРОЛЛ ИГРЫ КВЕСТА{% else %}РУЛЕТКА ВЫБОРА ИГРЫ{% endif %} 🎲</span>
+        <div class="mb-2 space-y-1 w-full">
+            <div class="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-[#2a160d] border border-[#69381c] text-amber-300 text-xs sm:text-sm font-heading font-black tracking-widest uppercase shadow-inner">
+                <span>🎲 {% if is_reroll %}РЕРОЛЛ ИГРЫ КВЕСТА{% else %}КОЛЕСО ВЫБОРА ИГРЫ{% endif %} 🎲</span>
             </div>
             <h2 class="text-2xl sm:text-3xl font-heading font-black text-[#fdf4e2] tracking-wide uppercase drop-shadow">
-                {% if is_reroll %}Реролл: {{ category_display }}{% else %}Выбор Квеста{% endif %}
+                {% if is_reroll %}Реролл: {{ quest.card_title or "Случайный выбор" }}{% else %}{{ quest.card_title or "Колесо Квеста" }}{% endif %}
             </h2>
-            <p class="text-base sm:text-lg text-[#ecd7be] font-serif italic">
-                {% if is_reroll %}Барабан вращается... Ищем новую игру! Списан 1 реролл (осталось: {{ current_user.rerolls_left if current_user else 0 }}).{% else %}Барабан вращается... Определяем случайную игру!{% endif %}
-            </p>
+            <div class="flex items-center justify-center gap-3 text-xs sm:text-sm text-[#ecd7be] font-serif italic">
+                <span>{% if is_reroll %}Колесо вращается... Ищем новую игру! Списан 1 реролл (осталось: {{ current_user.rerolls_left if current_user else 0 }}).{% else %}Колесо вращается... Выбираем игру из базы данных!{% endif %}</span>
+                <button type="button" onclick="finishSpinNow()"
+                        class="px-2.5 py-0.5 rounded bg-amber-950/80 hover:bg-amber-900 border border-amber-600/70 text-amber-300 text-xs font-heading font-bold not-italic transition-all cursor-pointer shadow-sm">
+                    ⚡ Пропустить
+                </button>
+            </div>
         </div>
 
-        <!-- ОКНО ПРОСМОТРА БАРАБАНА (Slot Machine Viewing Window) -->
-        <div class="relative w-full h-[240px] rounded-xl border-4 border-[#3d1e0f] bg-[#f3ead3] shadow-[inset_0_4px_16px_rgba(0,0,0,0.4)] overflow-hidden">
+        <!-- ======================================================== -->
+        <!-- БОЛЬШОЕ КОЛЕСО ФОРТУНЫ С ОБЛОЖКАМИ ВО ВСЮ ЯЧЕЙКУ (CANVAS) -->
+        <!-- ======================================================== -->
+        <div class="relative flex flex-col items-center justify-center w-full py-2 my-1">
             
-            <!-- Верхняя виньетка затемнения -->
-            <div class="pointer-events-none absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-[#180e08]/95 via-[#180e08]/60 to-transparent z-20"></div>
-
-            <!-- Нижняя виньетка затемнения -->
-            <div class="pointer-events-none absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#180e08]/95 via-[#180e08]/60 to-transparent z-20"></div>
-
-            <!-- Центральная рамка-прицел (Выигрышная область) -->
-            <div class="pointer-events-none absolute top-[80px] left-0 right-0 h-[80px] border-y-2 border-amber-500 bg-amber-500/20 z-20 flex items-center justify-between px-3.5 shadow-[0_0_24px_rgba(245,158,11,0.4)]">
-                <span class="text-amber-400 text-2xl font-black pointer-animate">▶</span>
-                <span class="text-amber-400 text-2xl font-black pointer-animate">◀</span>
+            <!-- Золотая / белая стрелка-указатель сверху (на 12 часах) -->
+            <div class="relative z-30 flex flex-col items-center -mb-5 pointer-events-none">
+                <div style="width: 0; height: 0; border-left: 20px solid transparent; border-right: 20px solid transparent; border-top: 36px solid #f59e0b; filter: drop-shadow(0 4px 12px rgba(245,158,11,1));"></div>
+                <div style="width: 10px; height: 10px; background: #ffffff; border-radius: 50%; margin-top: -30px; box-shadow: 0 0 10px #ffffff;"></div>
             </div>
 
-            <!-- Прокручивающийся список игр (Reel Strip) -->
-            <div class="roulette-reel flex flex-col w-full">
-                {% for title in roulette_titles %}
-                <div class="h-[80px] w-full flex items-center justify-center px-6 text-center select-none border-b border-[#d8c5a4]/50 {% if loop.index0 == winning_index %}bg-amber-200/50{% endif %}">
-                    <span class="font-heading font-black text-xl sm:text-2xl text-[#1c0f08] tracking-wide drop-shadow-sm leading-snug">
-                        {{ title }}
-                    </span>
+            <!-- Кованая рама колеса -->
+            <div class="relative rounded-full p-2 bg-gradient-to-br from-[#2a1307] via-[#120501] to-[#000000] border-4 border-white/80 shadow-[0_0_60px_rgba(0,0,0,0.98),0_0_25px_rgba(255,255,255,0.2)]">
+                
+                <!-- Canvas 1200x1200 для сверхчеткой графики, отображается в 600px -->
+                <canvas id="fortune-wheel-canvas" width="1200" height="1200"
+                        style="width: 600px; height: 600px; max-width: 90vw; max-height: 64vh; display: block; border-radius: 50%; cursor: pointer;"
+                        onclick="finishSpinNow()"></canvas>
+                
+                <!-- Центральная круглая кнопка / медальон START ROLL (точно как на фото-образце) -->
+                <div class="absolute inset-0 m-auto w-28 h-28 rounded-full bg-[#1c1c1e] border-4 border-white shadow-[0_0_24px_rgba(255,255,255,0.4)] flex flex-col items-center justify-center cursor-pointer select-none text-center transition-transform hover:scale-105 active:scale-95 z-20"
+                     onclick="finishSpinNow()"
+                     title="Нажмите чтобы остановить или пропустить вращение">
+                    <span class="text-xs sm:text-sm font-black text-white uppercase tracking-wider leading-tight">START<br>ROLL</span>
                 </div>
-                {% endfor %}
             </div>
 
+            <!-- Подсказка текущей ячейки под колесом -->
+            <div id="wheel-current-game-hint" class="mt-2.5 text-sm sm:text-base font-serif italic text-amber-300/90 h-6 flex items-center justify-center gap-1.5">
+                <span>Крутится...</span>
+            </div>
         </div>
 
-        <!-- БЛОК ПОДТВЕРЖДЕНИЯ: Появляется после остановки барабана (НЕТ автопринятия!) -->
-        <div class="confirm-reveal mt-5 w-full space-y-4">
+        <!-- ======================================================== -->
+        <!-- БЛОК ВЫПАВШЕЙ ИГРЫ ИЗ БАЗЫ ДАННЫХ (ПОЯВЛЯЕТСЯ ПОСЛЕ ОСТАНОВКИ) -->
+        <!-- ======================================================== -->
+        <div id="roulette-confirm-block" class="mt-4 w-full space-y-4 opacity-0 transition-all duration-700 pointer-events-none transform translate-y-4"
+             style="transition: opacity 0.6s ease-out, transform 0.6s ease-out;">
             
-            <!-- Карточка выпавшей игры с увеличенным контрастным шрифтом -->
-            <div class="p-4 sm:p-5 rounded-xl bg-[#2b170d]/95 border-2 border-amber-600/70 shadow-lg flex items-center justify-between gap-4 text-left">
-                <div class="flex items-center gap-3.5">
-                    <div class="w-12 h-12 rounded-lg bg-amber-950 flex items-center justify-center border border-amber-500/50 text-2xl sm:text-3xl flex-shrink-0">
-                        {% if is_reroll %}🎲{% else %}🎮{% endif %}
-                    </div>
-                    <div>
-                        <span class="text-sm font-heading font-black uppercase tracking-wider text-amber-300 block">
-                            {% if is_reroll %}Новая выпавшая игра:{% else %}Выпавшая игра:{% endif %}
-                        </span>
-                        <span class="text-xl sm:text-2xl font-heading font-black text-[#fdf4e2] block leading-tight">
-                            {{ winning_title }}
-                        </span>
-                        <span class="text-base sm:text-lg font-handwriting text-[#eed8be] block font-extrabold mt-0.5">
-                            {{ winning_game.genre if winning_game else "Экшен" }} &bull; {{ winning_game.time_range if winning_game else "10–20 ч" }}
-                        </span>
-                    </div>
-                </div>
-                <div class="text-right flex-shrink-0">
-                    <span class="text-sm font-heading text-[#e2cfbd] block uppercase font-bold">{% if is_reroll %}Новая награда{% else %}Награда{% endif %}</span>
-                    <span class="text-lg sm:text-xl font-heading font-black text-amber-300 block drop-shadow">
-                        <span class="text-amber-400">★</span> {{ candidate_reward }} очков
-                    </span>
-                    {% if is_reroll and reroll_penalty_pct and reroll_penalty_pct > 0 %}
-                    <span class="text-[11px] font-heading text-red-400 font-bold block mt-0.5">
-                        -{{ reroll_penalty_pct }}% штраф при сдаче
-                    </span>
+            <!-- Роскошная визитка выпавшей игры -->
+            <div class="rounded-2xl bg-[#201007]/95 border-2 border-amber-600/80 shadow-2xl overflow-hidden text-left">
+                
+                <!-- Верхний баннер игры -->
+                <div class="relative w-full h-48 sm:h-56 overflow-hidden bg-black">
+                    {% if winning_game.image_url %}
+                    <img src="{{ winning_game.image_url }}" alt="{{ winning_title }}" class="w-full h-full object-cover">
+                    {% else %}
+                    <div class="w-full h-full bg-gradient-to-br from-[#2a1408] to-[#120703] flex items-center justify-center text-4xl">🎮</div>
                     {% endif %}
+                    <div class="absolute inset-0 bg-gradient-to-t from-[#201007] via-black/40 to-black/40"></div>
+
+                    <!-- Бейджи поверх баннера -->
+                    <div class="absolute top-3 left-3 flex items-center gap-2">
+                        <span class="px-2.5 py-1 rounded-md bg-amber-950/90 backdrop-blur-md text-amber-300 font-heading font-black text-xs uppercase tracking-wider border border-amber-500/60 shadow">
+                            {% if is_reroll %}🎲 Выпал Реролл{% else %}🏆 Выбор Колеса{% endif %}
+                        </span>
+                        {% if winning_game.review_percentage %}
+                        <span class="px-2.5 py-1 rounded-md bg-emerald-950/90 backdrop-blur-md text-emerald-300 font-heading font-black text-xs uppercase tracking-wider border border-emerald-500/60 shadow flex items-center gap-1">
+                            <span>👍</span> <span>{{ winning_game.review_percentage|round|int }}%</span>
+                        </span>
+                        {% endif %}
+                    </div>
+
+                    <!-- Название игры на баннере -->
+                    <div class="absolute bottom-3 left-4 right-4">
+                        <h3 class="text-2xl sm:text-3xl font-heading font-black text-[#fdf4e2] tracking-wide leading-tight drop-shadow-lg">
+                            {{ winning_title }}
+                        </h3>
+                        <div class="text-xs sm:text-sm text-amber-200/90 font-serif italic pt-0.5">
+                            {% if winning_game.developer %}Студия: <strong class="text-white">{{ winning_game.developer }}</strong>{% endif %}
+                            {% if winning_game.release_date %} &bull; Релиз: <span class="text-stone-300">{{ winning_game.release_date }}</span>{% endif %}
+                        </div>
+                    </div>
                 </div>
+
+                <!-- Подробные параметры из games.db -->
+                <div class="p-4 sm:p-5 space-y-3.5">
+                    
+                    <!-- Сетка ключевых параметров -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                        <div class="bg-[#140a05] p-2.5 rounded-xl border border-[#422212]">
+                            <span class="text-[#a88a6d] font-heading font-bold block uppercase text-[10px]">Время HLTB</span>
+                            <span class="text-base font-heading font-black text-amber-300">
+                                ⏱️ {{ winning_game.hltb_hours }} ч
+                            </span>
+                        </div>
+                        <div class="bg-[#140a05] p-2.5 rounded-xl border border-[#422212]">
+                            <span class="text-[#a88a6d] font-heading font-bold block uppercase text-[10px]">Отзывы Steam</span>
+                            <span class="text-sm font-heading font-black text-emerald-400 block truncate" title="{{ winning_game.review_desc or 'Положительные' }}">
+                                {{ winning_game.review_desc or 'Положительные' }}
+                            </span>
+                        </div>
+                        <div class="bg-[#140a05] p-2.5 rounded-xl border border-[#422212]">
+                            <span class="text-[#a88a6d] font-heading font-bold block uppercase text-[10px]">Награда</span>
+                            <span class="text-base font-heading font-black text-amber-300">
+                                ★ {{ candidate_reward }}
+                            </span>
+                        </div>
+                        <div class="bg-[#140a05] p-2.5 rounded-xl border border-[#422212]">
+                            <span class="text-[#a88a6d] font-heading font-bold block uppercase text-[10px]">Штраф сброса</span>
+                            <span class="text-base font-heading font-black text-red-400">
+                                ⚠️ {{ penalty_points }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Теги из базы данных Steam -->
+                    {% if winning_game.tags %}
+                    <div class="pt-1">
+                        <span class="text-[11px] font-heading font-bold uppercase tracking-wider text-[#a88a6d] block mb-1">Метки Steam:</span>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            {% for tag in winning_game.tags[:8] %}
+                            <span class="px-2 py-0.5 rounded bg-black/40 text-amber-200/90 text-xs font-mono border border-amber-800/40">
+                                {{ tag }}
+                            </span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Ссылки на Steam и HowLongToBeat -->
+                    <div class="flex items-center gap-2 pt-1 border-t border-[#381c0f]">
+                        {% if winning_game.steam_url %}
+                        <a href="{{ winning_game.steam_url }}" target="_blank" rel="noopener noreferrer"
+                           class="flex-1 py-1.5 px-3 rounded-lg bg-[#171d25] hover:bg-[#222b37] border border-[#3d4450] text-xs font-heading font-black text-blue-200 flex items-center justify-center gap-1.5 transition">
+                            <span>🎮 Страница в Steam</span>
+                            <span>↗</span>
+                        </a>
+                        {% endif %}
+                        {% if winning_game.hltb_url %}
+                        <a href="{{ winning_game.hltb_url }}" target="_blank" rel="noopener noreferrer"
+                           class="flex-1 py-1.5 px-3 rounded-lg bg-[#1f1a14] hover:bg-[#2e261d] border border-amber-700/50 text-xs font-heading font-black text-amber-300 flex items-center justify-center gap-1.5 transition">
+                            <span>⏱️ HowLongToBeat</span>
+                            <span>↗</span>
+                        </a>
+                        {% endif %}
+                    </div>
+
+                </div>
+
             </div>
 
-            {% if is_reroll %}
-                <!-- Кнопка завершения реролла -->
-                <div class="pt-1">
-                    <button hx-get="/board"
-                            hx-target="#main-board"
-                            hx-swap="outerHTML"
-                            onclick="document.getElementById('roulette-modal').remove()"
-                            class="w-full py-3.5 px-4 rounded-xl font-heading font-black text-sm sm:text-base uppercase tracking-widest text-[#fcf0db] bg-gradient-to-b from-[#8f1d1d] via-[#751616] to-[#4e0c0c] hover:from-[#a82424] hover:to-[#631010] active:scale-95 transition-all duration-200 border-2 border-[#b83232] shadow-[0_4px_16px_rgba(180,30,30,0.6)] flex items-center justify-center gap-2 cursor-pointer">
-                        <span>🎯</span>
-                        <span>ПРИНЯТЬ И ВЕРНУТЬСЯ К ДОСКЕ</span>
-                    </button>
-                </div>
-                <p class="text-sm text-emerald-400 font-serif italic text-center font-semibold">
-                    ✓ Игра в квесте успешно заменена на «{{ winning_title }}»!
-                </p>
-            {% else %}
-                <!-- Кнопки решения игрока: Принять квест ИЛИ Отказаться -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                    
-                    <!-- 1. Кнопка согласия: Переходит к выбору усложнения или стандартного квеста -->
-                    <button hx-post="/quests/{{ quest.id }}/confirm-take?user_id={{ user_id }}&game_id={{ winning_game.id }}"
-                            hx-target="#roulette-modal-container"
-                            hx-swap="innerHTML"
-                            class="w-full py-3.5 px-4 rounded-xl font-heading font-black text-sm sm:text-base uppercase tracking-widest text-[#fcf0db] bg-gradient-to-b from-[#8f1d1d] via-[#751616] to-[#4e0c0c] hover:from-[#a82424] hover:to-[#631010] active:scale-95 transition-all duration-200 border-2 border-[#b83232] shadow-[0_4px_16px_rgba(180,30,30,0.6)] flex items-center justify-center gap-2 cursor-pointer">
-                        <span>🎮</span>
-                        <span>ВЫБРАТЬ ЭТУ ИГРУ</span>
-                    </button>
+            <!-- Главная кнопка: Подтвердить контракт -->
+            <div class="pt-1">
+                {% if is_reroll %}
+                <button hx-get="/board"
+                        hx-target="#main-board"
+                        hx-swap="outerHTML"
+                        onclick="document.getElementById('roulette-modal').remove()"
+                        class="w-full py-3.5 px-4 rounded-xl font-heading font-black text-sm sm:text-base uppercase tracking-widest text-[#fcf0db] bg-gradient-to-b from-[#8f1d1d] via-[#751616] to-[#4e0c0c] hover:from-[#a82424] hover:to-[#631010] active:scale-95 transition-all duration-200 border-2 border-[#b83232] shadow-[0_4px_16px_rgba(180,30,30,0.6)] flex items-center justify-center gap-2 cursor-pointer">
+                    <span>🎮</span>
+                    <span>ПРИНЯТЬ И ВЕРНУТЬСЯ К ДОСКЕ</span>
+                </button>
+                {% else %}
+                <button hx-post="/quests/{{ quest.id }}/confirm-take?user_id={{ user_id }}&game_id={{ winning_game.id }}"
+                        hx-target="#roulette-modal-container"
+                        hx-swap="innerHTML"
+                        class="w-full py-3.5 px-4 rounded-xl font-heading font-black text-sm sm:text-base uppercase tracking-widest text-[#fcf0db] bg-gradient-to-b from-[#8f1d1d] via-[#751616] to-[#4e0c0c] hover:from-[#a82424] hover:to-[#631010] active:scale-95 transition-all duration-200 border-2 border-[#b83232] shadow-[0_4px_16px_rgba(180,30,30,0.6)] flex items-center justify-center gap-2 cursor-pointer">
+                    <span>🎮</span>
+                    <span>ВЫБРАТЬ ЭТУ ИГРУ И ЧЕЛЛЕНДЖ</span>
+                </button>
+                {% endif %}
+            </div>
 
-                    <!-- 2. Кнопка отказа: Закрывает рулетку, квест остается на доске! -->
-                    <button hx-get="/board"
-                            hx-target="#main-board"
-                            hx-swap="outerHTML"
-                            class="w-full py-3.5 px-4 rounded-xl font-heading font-black text-sm sm:text-base uppercase tracking-widest text-[#cfb79f] bg-gradient-to-b from-stone-800 to-stone-900 hover:from-stone-700 hover:to-stone-800 active:scale-95 transition-all duration-200 border-2 border-stone-600 shadow-md flex items-center justify-center gap-2 cursor-pointer">
-                        <span>✕</span>
-                        <span>ОТКАЗАТЬСЯ</span>
-                    </button>
+            <!-- Кнопки альтернативных действий: Реролл или Сброс квеста -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
 
-                </div>
+                <!-- Реролл игры (доступен только если есть рероллы) -->
+                {% if current_user and current_user.rerolls_left > 0 %}
+                <button hx-post="/quests/{{ quest.id }}/reroll"
+                        hx-target="#roulette-modal-container"
+                        hx-swap="innerHTML"
+                        class="w-full py-3 px-3 rounded-xl font-heading font-black text-xs sm:text-sm uppercase tracking-wider text-amber-200 bg-gradient-to-b from-[#3a2010] to-[#201107] hover:from-[#4d2a15] hover:to-[#2e180a] border-2 border-amber-600 shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all">
+                    <span>🎲</span>
+                    <span>ПЕРЕБРОСИТЬ ({{ current_user.rerolls_left }})</span>
+                </button>
+                {% else %}
+                <button disabled
+                        title="У вас нет доступных рероллов (0). Сдайте 3 квеста для перезарядки."
+                        class="w-full py-3 px-3 rounded-xl font-heading font-black text-xs sm:text-sm uppercase tracking-wider text-stone-500 bg-stone-900 border-2 border-stone-800 opacity-60 cursor-not-allowed flex items-center justify-center gap-1.5 shadow-inner">
+                    <span>🎲</span>
+                    <span>НЕТ РЕРОЛЛОВ (0)</span>
+                </button>
+                {% endif %}
 
-                <p class="text-sm text-[#e0cfbe] font-serif italic text-center font-medium">
-                    Квест не будет закреплен за вами, пока вы не нажмете «Выбрать эту игру»
-                </p>
-            {% endif %}
+                <!-- Сброс квеста (Отказ): Бесплатный сброс если есть, иначе штраф очков -->
+                {% if current_user and current_user.free_drops > 0 %}
+                <button hx-post="/quests/{{ quest.id }}/drop"
+                        hx-target="#main-board"
+                        hx-swap="outerHTML"
+                        hx-confirm="Сбросить этот квест? Будет потрачен 1 бесплатный сброс (останется: {{ current_user.free_drops - 1 }})."
+                        class="w-full py-3 px-3 rounded-xl font-heading font-black text-xs sm:text-sm uppercase tracking-wider text-cyan-200 bg-gradient-to-b from-cyan-950 to-slate-950 hover:from-cyan-900 hover:to-slate-900 border-2 border-cyan-700 shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all">
+                    <span>🛡️</span>
+                    <span>СБРОСИТЬ (Бесплатно: {{ current_user.free_drops }})</span>
+                </button>
+                {% else %}
+                <button hx-post="/quests/{{ quest.id }}/drop"
+                        hx-target="#main-board"
+                        hx-swap="outerHTML"
+                        hx-confirm="Внимание! У вас нет бесплатных сбросов. При сбросе квеста будет списан штраф {{ penalty_points|default(50) }} очков. Сбросить квест?"
+                        class="w-full py-3 px-3 rounded-xl font-heading font-black text-xs sm:text-sm uppercase tracking-wider text-red-200 bg-gradient-to-b from-red-950 to-stone-950 hover:from-red-900 hover:to-stone-900 border-2 border-red-700 shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all">
+                    <span>⚠️</span>
+                    <span>СБРОСИТЬ (-{{ penalty_points|default(50) }} очков)</span>
+                </button>
+                {% endif %}
 
+            </div>
+
+            <p class="text-xs text-[#cfb79e] font-serif italic text-center font-medium pt-0.5">
+                ⚠️ Контракт закреплен в вашем активном слоте. Для отказа требуется потратить реролл или сброс.
+            </p>
+
+        </div>
 
     </div>
+
+    <!-- ======================================================== -->
+    <!-- СКРИПТ ВРАЩЕНИЯ: КАРТИНКА ВО ВСЮ ЯЧЕЙКУ КОЛЕСА (CANVAS)  -->
+    <!-- ======================================================== -->
+    <script>
+    (function() {
+        const games = {{ roulette_games | tojson }};
+        const winningIndex = {{ winning_index }};
+        const durationSec = {{ duration_sec|default(3.2) }};
+        const totalItems = games.length;
+
+        const canvas = document.getElementById('fortune-wheel-canvas');
+        const confirmBlock = document.getElementById('roulette-confirm-block');
+        const hintEl = document.getElementById('wheel-current-game-hint');
+        let spinFinished = false;
+
+
+        // Параметры большого Canvas колеса (1200x1200)
+        const ctx = canvas ? canvas.getContext('2d') : null;
+        const centerX = 600;
+        const centerY = 600;
+        const radius = 585;
+        const hubRadius = 130;
+        const sliceAngle = (2 * Math.PI) / totalItems;
+        let currentRotationAngle = 0;
+
+        // Предзагрузка картинок обложек Steam
+        const loadedImages = {};
+        games.forEach((g, idx) => {
+            if (g.image_url) {
+                const img = new Image();
+                img.onload = function() {
+                    loadedImages[idx] = img;
+                    if (!startTime || spinFinished) drawWheel(currentRotationAngle);
+                };
+                img.onerror = function() {
+                    console.warn("Image load failed for:", g.title, g.image_url);
+                };
+                img.src = g.image_url;
+            }
+        });
+
+        // Цвета подложки сектора если картинка еще грузится
+        const bgColors = [
+            '#5e1b1b', '#26140b', '#6b4317', '#1b3323', '#1e2838',
+            '#421a32', '#52270e', '#16261a', '#423214', '#2a1730',
+            '#4c1b18', '#251910'
+        ];
+
+        // Звуковой синтезатор щелчка стрелки колеса через Web Audio API
+        let audioCtx = null;
+        function playWheelTick() {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(650, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(180, audioCtx.currentTime + 0.035);
+                gain.gain.setValueAtTime(0.09, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.035);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.035);
+            } catch (e) {}
+        }
+
+        // Указатель находится вверху на 12 часах (angle = -Math.PI / 2)
+        // Рассчитываем целевой угол так, чтобы winningIndex оказался ровно под стрелкой
+        const pointerAngle = -Math.PI / 2;
+        const targetSliceCenter = winningIndex * sliceAngle + (sliceAngle / 2);
+        const desiredFinalAngle = pointerAngle - targetSliceCenter;
+        // 5 полных оборотов + доворот до нужного сектора
+        const totalRotation = (5 * 2 * Math.PI) + ((desiredFinalAngle % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI));
+
+        let startTime = null;
+        let lastTickSlice = -1;
+
+        function drawWheel(currentRotation) {
+            if (!ctx) return;
+            currentRotationAngle = currentRotation;
+            ctx.clearRect(0, 0, 1200, 1200);
+
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate(currentRotation);
+
+            for (let i = 0; i < totalItems; i++) {
+                const angle = i * sliceAngle;
+                const sliceCenterAngle = angle + sliceAngle / 2;
+                const isWinner = (spinFinished && i === winningIndex);
+
+                ctx.save();
+
+                // 1. Клипируем контекст строго по форме сектора пиццы (Wedge)
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.arc(0, 0, radius, angle, angle + sliceAngle);
+                ctx.closePath();
+                ctx.clip(); // Теперь изображение строго обрезается по границам сектора
+
+                // Фоновая подложка сектора
+                ctx.fillStyle = bgColors[i % bgColors.length];
+                ctx.fill();
+
+                // 2. Отрисовка обложки игры ВО ВСЮ ЯЧЕЙКУ СЕКТОРА (точно по образцу)
+                const img = loadedImages[i];
+                if (img && img.complete && img.naturalWidth > 0) {
+                    ctx.save();
+                    // Поворачиваемся вдоль центральной радиальной оси сектора
+                    ctx.rotate(sliceCenterAngle);
+                    // Перемещаемся к внешнему ободу
+                    ctx.translate(radius, 0);
+                    // Поворачиваем на 90°, чтобы верх обложки смотрел наружу, а низ к центру
+                    ctx.rotate(Math.PI / 2);
+
+                    // Расчет геометрии для полного покрытия сектора без пустот (object-fit: cover)
+                    const wedgeWidthAtRim = 2 * radius * Math.sin(sliceAngle / 2);
+                    const targetW = wedgeWidthAtRim * 1.25; // чуть шире обода для запаса
+                    const targetH = radius - (hubRadius * 0.35); // от обода до ступицы
+
+                    // Масштаб с сохранением естественных пропорций картинки
+                    const scale = Math.max(targetW / img.naturalWidth, targetH / img.naturalHeight);
+                    const drawW = img.naturalWidth * scale;
+                    const drawH = img.naturalHeight * scale;
+
+                    // Центрируем изображение по ширине сектора
+                    const drawX = -drawW / 2;
+                    // Располагаем от внешнего обода внутрь к центру
+                    const drawY = -6;
+
+                    ctx.drawImage(img, drawX, drawY, drawW, drawH);
+
+                    // Легкий градиент у основания ступицы для объемной глубины
+                    const grad = ctx.createLinearGradient(0, 0, 0, drawH);
+                    grad.addColorStop(0, 'rgba(0,0,0,0.0)');
+                    grad.addColorStop(0.75, 'rgba(0,0,0,0.08)');
+                    grad.addColorStop(1, 'rgba(0,0,0,0.55)');
+                    ctx.fillStyle = grad;
+                    ctx.fillRect(drawX, drawY, drawW, drawH);
+
+                    ctx.restore();
+                } else {
+                    // Резервный стильный вид ячейки пока картинка загружается
+                    ctx.save();
+                    ctx.rotate(sliceCenterAngle);
+                    ctx.textAlign = 'right';
+                    ctx.fillStyle = '#fef3c7';
+                    ctx.font = 'bold 22px sans-serif';
+                    const title = games[i].title;
+                    const truncated = title.length > 15 ? title.slice(0, 14) + '…' : title;
+                    ctx.fillText('🎮 ' + truncated, radius - 35, 7);
+                    ctx.restore();
+                }
+
+                ctx.restore(); // Снимаем клип сектора
+
+                // 3. Белоснежные четкие разделительные линии между ячейками (как на образце)
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                const ex = radius * Math.cos(angle);
+                const ey = radius * Math.sin(angle);
+                ctx.lineTo(ex, ey);
+                ctx.strokeStyle = isWinner ? '#fde047' : '#ffffff';
+                ctx.lineWidth = isWinner ? 6 : 4;
+                ctx.stroke();
+            }
+
+            // 4. Внешний белый обод колеса (как на эталонном фото)
+            ctx.beginPath();
+            ctx.arc(0, 0, radius - 2, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+            // 5. Центральная ступица колеса с надписью START ROLL (точно как на фото)
+            ctx.beginPath();
+            ctx.arc(0, 0, hubRadius, 0, 2 * Math.PI);
+            ctx.fillStyle = '#1c1c1e';
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+            // Текст START ROLL внутри центральной ступицы
+            ctx.save();
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = '900 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+            ctx.fillText('START', 0, -14);
+            ctx.fillText('ROLL', 0, 14);
+            ctx.restore();
+            ctx.restore();
+        }
+
+        // Анимация физического вращения колеса
+        function animateWheel(timestamp) {
+            if (!startTime) startTime = timestamp;
+            const elapsed = (timestamp - startTime) / 1000;
+            const progress = Math.min(1, elapsed / durationSec);
+
+            // Easing кубический выбег (плавное замедление)
+            const ease = 1 - Math.pow(1 - progress, 3.5);
+            const currentRotation = totalRotation * ease;
+
+            drawWheel(currentRotation);
+
+            // Определение активного сектора под стрелкой для звука и надписи
+            const normalizedAngle = (-pointerAngle + currentRotation) % (2 * Math.PI);
+            const activeSlice = Math.floor(normalizedAngle / sliceAngle) % totalItems;
+            if (activeSlice !== lastTickSlice) {
+                lastTickSlice = activeSlice;
+                playWheelTick();
+                if (hintEl && games[activeSlice]) {
+                    hintEl.innerHTML = '<span>▶</span> <strong>' + games[activeSlice].title + '</strong>';
+                }
+            }
+
+            if (progress < 1 && !spinFinished) {
+                requestAnimationFrame(animateWheel);
+            } else {
+                finishSpin();
+            }
+        }
+
+        function finishSpin() {
+            if (spinFinished) return;
+            spinFinished = true;
+            drawWheel(totalRotation);
+
+            if (hintEl && games[winningIndex]) {
+                hintEl.innerHTML = '🏆 <strong class="text-amber-400">Выпало: ' + games[winningIndex].title + '</strong>';
+            }
+
+            if (confirmBlock) {
+                confirmBlock.style.opacity = '1';
+                confirmBlock.style.transform = 'translateY(0)';
+                confirmBlock.style.pointerEvents = 'auto';
+            }
+        }
+
+        window.finishSpinNow = function() {
+            finishSpin();
+        };
+
+        // Старт вращения
+        requestAnimationFrame(animateWheel);
+    })();
+    </script>
 
 </div>

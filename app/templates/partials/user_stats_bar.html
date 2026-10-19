@@ -1,0 +1,82 @@
+{# templates/partials/user_stats_bar.html #}
+<div id="user-stats-bar" {% if is_oob %}hx-swap-oob="outerHTML" {% endif %}class="flex items-center gap-3 sm:gap-4 bg-[#1e1009]/95 px-4 py-2.5 rounded-xl border-2 border-[#542d17] shadow-[inset_0_2px_6px_rgba(0,0,0,0.7),0_4px_12px_rgba(0,0,0,0.6)]">
+    
+    <!-- Аватарка и Имя Игрока (ссылка в Личный кабинет) -->
+    <a href="/profile" class="flex items-center gap-2.5 group cursor-pointer" title="Личный кабинет">
+        <div class="relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl overflow-hidden border-2 border-amber-600/70 group-hover:border-amber-400 group-hover:scale-105 transition shadow bg-[#160b05] flex-shrink-0">
+            <img src="{{ current_user.avatar_url or '/static/avatars/default.svg' if current_user else '/static/avatars/default.svg' }}" 
+                 alt="{{ current_user.username if current_user else 'Игрок' }}" 
+                 class="w-full h-full object-cover">
+        </div>
+        <div class="flex flex-col">
+            <span class="text-xs font-heading uppercase font-bold text-[#cfb69e] tracking-wider group-hover:text-amber-300 transition">Игрок</span>
+            <span class="text-sm sm:text-base font-heading font-extrabold text-[#f5ebd4] group-hover:text-amber-200 transition flex items-center gap-1">
+                👤 {{ current_user.username if current_user else "Гость" }}
+            </span>
+        </div>
+    </a>
+
+    <div class="h-9 w-px bg-[#4a2614]"></div>
+
+    <!-- Набранные очки -->
+    <div class="flex flex-col items-center">
+        <span class="text-xs font-heading uppercase font-bold text-[#cfb69e] tracking-wider">Очки</span>
+        <span class="text-base sm:text-lg font-heading font-black text-amber-300 flex items-center gap-1 drop-shadow">
+            <span class="text-amber-400">★</span> {{ current_user.total_score if current_user else 0 }}
+        </span>
+    </div>
+
+    <div class="h-9 w-px bg-[#4a2614]"></div>
+
+    <!-- Бесплатные сбросы -->
+    <div class="flex flex-col items-center" title="Бесплатные сбросы квестов">
+        <span class="text-xs font-heading uppercase font-bold text-[#cfb69e] tracking-wider">Сбросы</span>
+        <span class="text-base sm:text-lg font-heading font-black text-cyan-300 flex items-center gap-1">
+            🛡️ {{ current_user.free_drops if current_user else 0 }}
+        </span>
+    </div>
+
+    <div class="h-9 w-px bg-[#4a2614]"></div>
+
+    <!-- Рероллы -->
+    <div class="flex flex-col items-center" title="Попытки перебросить рулетку игр">
+        <span class="text-xs font-heading uppercase font-bold text-[#cfb69e] tracking-wider">Рероллы</span>
+        <span class="text-base sm:text-lg font-heading font-black text-amber-400 flex items-center gap-1">
+            🎲 {{ current_user.rerolls_left if current_user else 0 }}
+        </span>
+    </div>
+
+    <div class="h-9 w-px bg-[#4a2614]"></div>
+
+    <!-- Слоты квестов -->
+    <div class="flex flex-col items-center" title="Активные слоты квестов: максимум {{ max_active_quests|default(1) }}">
+        <span class="text-xs font-heading uppercase font-bold text-[#cfb69e] tracking-wider">Слоты</span>
+        <span class="text-base sm:text-lg font-heading font-black {% if user_active_count and user_active_count >= (max_active_quests|default(1)) %}text-red-400 animate-pulse{% else %}text-emerald-400{% endif %} flex items-center gap-1">
+            ⚔️ {{ user_active_count|default(0) }}/{{ max_active_quests|default(1) }}
+        </span>
+    </div>
+
+    <!-- Знак Андердога -->
+    {% if current_user and current_user.is_underdog %}
+    <div class="ml-1 pl-3 border-l-2 border-red-800/80 flex items-center">
+        <span class="px-3 py-1 text-xs sm:text-sm font-heading font-black uppercase tracking-wider rounded bg-red-950 text-red-200 border border-red-600 shadow-[0_0_12px_rgba(220,38,38,0.5)] animate-pulse flex items-center gap-1" title="Отставание > 2000 очков: +20% бонус к награде!">
+            🔥 Андердог
+        </span>
+    </div>
+    {% endif %}
+
+    <div class="h-9 w-px bg-[#4a2614] hidden sm:block"></div>
+
+    <!-- Кнопки перехода: Кабинет и Выход -->
+    <div class="flex items-center gap-1.5 pl-1">
+        <a href="/profile" class="p-2 sm:px-2.5 sm:py-1.5 rounded-lg bg-[#2e170c] hover:bg-[#452212] border border-[#6b3c1d] text-xs font-heading font-bold text-amber-300 hover:text-white transition flex items-center gap-1" title="Личный кабинет">
+            <span>⚙️</span>
+            <span class="hidden md:inline">Кабинет</span>
+        </a>
+        <a href="/logout" class="p-2 sm:px-2.5 sm:py-1.5 rounded-lg bg-red-950/80 hover:bg-red-900 border border-red-700/80 text-xs font-heading font-bold text-red-200 hover:text-white transition flex items-center gap-1" title="Выйти из аккаунта">
+            <span>🚪</span>
+            <span class="hidden md:inline">Выйти</span>
+        </a>
+    </div>
+
+</div>
