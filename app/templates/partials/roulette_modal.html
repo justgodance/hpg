@@ -27,13 +27,13 @@
         <!-- Заголовок Рулетки -->
         <div class="mb-2 space-y-1 w-full">
             <div class="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-[#2a160d] border border-[#69381c] text-amber-300 text-xs sm:text-sm font-heading font-black tracking-widest uppercase shadow-inner">
-                <span>🎲 {% if is_reroll %}РЕРОЛЛ ИГРЫ КВЕСТА{% else %}КОЛЕСО ВЫБОРА ИГРЫ{% endif %} 🎲</span>
+                <span>{% if is_technical %}🛠️ ТЕХНИЧЕСКИЙ РЕРОЛЛ ИГРЫ 🛠️{% elif is_reroll %}🎲 РЕРОЛЛ ИГРЫ КВЕСТА 🎲{% else %}🎲 КОЛЕСО ВЫБОРА ИГРЫ 🎲{% endif %}</span>
             </div>
             <h2 class="text-2xl sm:text-3xl font-heading font-black text-[#fdf4e2] tracking-wide uppercase drop-shadow">
-                {% if is_reroll %}Реролл: {{ quest.card_title or "Случайный выбор" }}{% else %}{{ quest.card_title or "Колесо Квеста" }}{% endif %}
+                {% if is_technical %}Тех. Реролл: {{ quest.card_title or "Замена игры" }}{% elif is_reroll %}Реролл: {{ quest.card_title or "Случайный выбор" }}{% else %}{{ quest.card_title or "Колесо Квеста" }}{% endif %}
             </h2>
             <div class="flex items-center justify-center gap-3 text-xs sm:text-sm text-[#ecd7be] font-serif italic">
-                <span>{% if is_reroll %}Колесо вращается... Ищем новую игру! Списан 1 реролл (осталось: {{ current_user.rerolls_left if current_user else 0 }}).{% else %}Колесо вращается... Выбираем игру из базы данных!{% endif %}</span>
+                <span>{% if is_technical %}Колесо вращается... Бесплатная замена нерабочей игры! Рероллы не списаны (осталось: {{ current_user.rerolls_left if current_user else 0 }}).{% elif is_reroll %}Колесо вращается... Ищем новую игру! Списан 1 реролл (осталось: {{ current_user.rerolls_left if current_user else 0 }}).{% else %}Колесо вращается... Выбираем игру из базы данных!{% endif %}</span>
                 <button type="button" onclick="finishSpinNow()"
                         class="px-2.5 py-0.5 rounded bg-amber-950/80 hover:bg-amber-900 border border-amber-600/70 text-amber-300 text-xs font-heading font-bold not-italic transition-all cursor-pointer shadow-sm">
                     ⚡ Пропустить
@@ -247,6 +247,17 @@
                 </button>
                 {% endif %}
 
+            </div>
+
+            <!-- Альтернатива: Технический реролл если игра не запускается -->
+            <div class="pt-1">
+                <button hx-get="/quests/{{ quest.id }}/technical_reroll_modal"
+                        hx-target="#roulette-modal-container"
+                        hx-swap="innerHTML"
+                        class="w-full py-2.5 px-3 rounded-xl font-heading font-bold text-xs uppercase tracking-wider text-cyan-200 bg-[#09181d] hover:bg-[#0f272f] border border-cyan-600/60 shadow flex items-center justify-center gap-2 cursor-pointer transition">
+                    <span>🛠️</span>
+                    <span>Игра не запускается? Технический реролл (бесплатно)</span>
+                </button>
             </div>
 
             <p class="text-xs text-[#cfb79e] font-serif italic text-center font-medium pt-0.5">

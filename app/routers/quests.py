@@ -122,19 +122,37 @@ async def reroll_quest_endpoint(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
+@router.post("/{quest_id}/technical-reroll", response_model=QuestRead)
+async def technical_reroll_quest_endpoint(
+    quest_id: int,
+    user_id: int = Query(..., description="ID пользователя, совершающего технический реролл"),
+    reason: str | None = Query(None, description="Причина технического реролла (игра не запускается, вылетает и т.д.)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Бесплатный технический реролл: игра не запускается или не подходит по правилам. Не списывает рероллы и не накладывает штраф."""
+    try:
+        quest = await reroll_quest(db, quest_id=quest_id, user_id=user_id, is_technical=True, reason=reason)
+        return quest
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
 @router.post("/{quest_id}/complete", response_model=QuestActionResult)
 async def complete_quest_endpoint(
     quest_id: int,
     user_id: int = Query(..., description="ID пользователя, сдающего квест"),
     challenge_status: str | None = Query(None, description="Статус выполнения челленджа: 'success' или 'failed'"),
+    actual_hours: float | None = Query(None, description="Количество реальных часов, проведенных в игре"),
     db: AsyncSession = Depends(get_db),
 ):
     """Завершение квеста: рассчитывает бонус/штраф за челлендж, штраф за рероллы (-10%/реролл) и бонус Андердога (+20%)."""
     try:
         quest, points_earned, details = await complete_quest(
-            db, quest_id=quest_id, user_id=user_id, challenge_status=challenge_status
+            db, quest_id=quest_id, user_id=user_id, challenge_status=challenge_status, actual_hours=actual_hours
         )
         msg_parts = [f"Квест успешно сдан! Начислено: +{points_earned} очков."]
+        if quest.actual_hours:
+            msg_parts.append(f"Зафиксировано реальное время: {quest.actual_hours} ч.")
         if details.get("challenge_status"):
             if details["challenge_status"] == "success":
                 msg_parts.append(f"Челлендж выполнен (множитель x{details['challenge_multiplier']})!")
@@ -142,6 +160,8 @@ async def complete_quest_endpoint(
                 msg_parts.append(f"Челлендж провален (штрафной множитель x{details['challenge_multiplier']}).")
         if details["reroll_penalty_pct"] > 0:
             msg_parts.append(f"Штраф за {details['reroll_count']} реролла(ов): -{details['reroll_penalty_pct']}%.")
+        if details.get("technical_reroll_count", 0) > 0:
+            msg_parts.append(f"Использовано технических рероллов: {details['technical_reroll_count']}.")
         if details["underdog_bonus_applied"]:
             msg_parts.append("Применен бонус Андердога: +20%!")
         if details["recharged_reroll"]:

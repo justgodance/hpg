@@ -1,0 +1,126 @@
+{# templates/partials/technical_reroll_modal.html #}
+
+{% set current_game = quest.current_rolled_game if (quest.is_roulette and quest.current_rolled_game) else (quest.game or quest.current_rolled_game) %}
+
+<div id="roulette-modal" 
+     class="modal-open fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 overflow-y-auto transition-all duration-300"
+     style="z-index: 9999;">
+
+    <!-- Корпус Модального Окна Технического Реролла -->
+    <div class="relative w-full max-w-lg my-auto max-h-[92vh] overflow-y-auto bg-[#180e08] border-4 border-cyan-800/90 rounded-2xl shadow-[0_25px_70px_rgba(0,0,0,0.98),0_0_30px_rgba(6,182,212,0.15)] p-6 sm:p-8 flex flex-col items-center text-center"
+         onclick="event.stopPropagation()">
+        
+        <!-- Заклепки по углам -->
+        <span class="absolute top-3 left-3 w-3.5 h-3.5 rounded-full bg-gradient-to-br from-cyan-400 to-stone-800 border border-cyan-600 shadow pointer-events-none"></span>
+        <span class="absolute bottom-3 left-3 w-3.5 h-3.5 rounded-full bg-gradient-to-br from-cyan-400 to-stone-800 border border-cyan-600 shadow pointer-events-none"></span>
+        <span class="absolute bottom-3 right-3 w-3.5 h-3.5 rounded-full bg-gradient-to-br from-cyan-400 to-stone-800 border border-cyan-600 shadow pointer-events-none"></span>
+
+        <!-- Кнопка быстрого закрытия -->
+        <button onclick="document.getElementById('roulette-modal').remove()"
+                class="absolute top-3 right-3 w-8 h-8 rounded-full bg-[#1b2326] border border-cyan-700 text-[#d2e4e8] hover:text-white hover:border-cyan-400 hover:bg-[#222e33] text-lg font-black flex items-center justify-center transition-all cursor-pointer z-30 shadow"
+                title="Отмена">
+            ✕
+        </button>
+
+        <!-- Шапка Модального Окна -->
+        <div class="mb-5 space-y-2">
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#0d2229] border border-cyan-600/80 text-cyan-300 text-xs sm:text-sm font-heading font-black tracking-widest uppercase shadow-inner">
+                <span>🛠️ ТЕХНИЧЕСКИЙ РЕРОЛЛ 🛠️</span>
+            </div>
+            <h2 class="text-2xl sm:text-3xl font-heading font-black text-[#fdf4e2] tracking-wide uppercase drop-shadow">
+                Бесплатная замена игры
+            </h2>
+            <p class="text-xs sm:text-sm text-[#c8dce0] font-serif italic max-w-md mx-auto">
+                Если игра не запускается, вылетает или не соответствует правилам — вы можете бесплатно заменить её без потери очков и рероллов.
+            </p>
+        </div>
+
+        <!-- КАРТОЧКА ТЕКУЩЕЙ ИГРЫ -->
+        <div class="w-full p-4 rounded-xl bg-[#0f1d22]/95 border-2 border-cyan-700/60 shadow-lg text-left space-y-3 mb-5">
+            {% if current_game and current_game.image_url %}
+            <div class="w-full h-24 sm:h-28 rounded-lg overflow-hidden border border-cyan-600/50 mb-2 shadow-inner">
+                <img src="{{ current_game.image_url }}" alt="{{ current_game.title }}" class="w-full h-full object-cover">
+            </div>
+            {% endif %}
+            <div class="flex items-center justify-between border-b border-cyan-900/60 pb-2">
+                <div>
+                    <span class="text-[11px] font-heading font-black uppercase text-cyan-400 block tracking-wider">
+                        Текущая игра квеста:
+                    </span>
+                    <span class="text-base sm:text-lg font-heading font-black text-[#fdf4e2] block leading-tight">
+                        {{ current_game.title if current_game else 'Текущая игра' }}
+                    </span>
+                </div>
+                <div class="text-right">
+                    <span class="text-[11px] font-heading uppercase text-cyan-300/80 block font-bold">Категория</span>
+                    <span class="text-xs sm:text-sm font-heading font-black text-amber-300 block">
+                        {{ quest.card_type }}
+                    </span>
+                </div>
+            </div>
+
+            <div class="p-3 rounded-lg bg-[#081216] border border-cyan-900/80 flex items-start gap-2.5 text-xs text-cyan-200">
+                <span class="text-base">🛡️</span>
+                <span class="leading-relaxed">
+                    <strong>Бесплатно:</strong> Ваш баланс рероллов (🎲 {{ current_user.rerolls_left if current_user else 0 }}) останется нетронутым, и штраф (-10% за реролл) начислен НЕ будет.
+                </span>
+            </div>
+        </div>
+
+        <!-- ФОРМА ТЕХНИЧЕСКОГО РЕРОЛЛА -->
+        <form hx-post="/quests/{{ quest.id }}/technical_reroll"
+              hx-target="#roulette-modal-container"
+              hx-swap="innerHTML"
+              class="w-full space-y-4 text-left">
+
+            <!-- Причина реролла -->
+            <div class="space-y-1.5">
+                <label for="tech_reroll_reason" class="text-xs font-heading font-black uppercase text-cyan-300 block tracking-wider">
+                    Причина технического реролла:
+                </label>
+                <div class="relative">
+                    <select id="tech_reroll_reason" 
+                            name="reason_category" 
+                            required 
+                            class="w-full px-3.5 py-2.5 rounded-xl bg-[#091519] border-2 border-cyan-700/80 focus:border-cyan-400 focus:outline-none text-[#fdf4e2] font-heading text-sm transition-colors cursor-pointer shadow-inner">
+                        <option value="Игра не запускается / вылетает" selected>💥 Игра не запускается / вылетает при старте</option>
+                        <option value="Не подходит по правилам турнира">📜 Не подходит по правилам турнира / ошибка фильтра</option>
+                        <option value="Недоступна в регионе / нет возможности приобрести">🚫 Недоступна в регионе РФ / нет возможности запустить</option>
+                        <option value="Непреодолимый критический баг">🐛 Непреодолимый баг, ломающий прохождение</option>
+                        <option value="Другая техническая неисправность">⚙️ Другая техническая неисправность</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Дополнительный комментарий -->
+            <div class="space-y-1.5">
+                <label for="tech_reroll_comment" class="text-xs font-heading font-black uppercase text-cyan-300 block tracking-wider flex items-center justify-between">
+                    <span>Подробности проблемы (необязательно):</span>
+                    <span class="text-[11px] text-[#86a2a8] font-sans font-normal lowercase">опционально</span>
+                </label>
+                <input type="text" 
+                       id="tech_reroll_comment" 
+                       name="comment" 
+                       placeholder="Напр: ошибка DirectX 12 или черный экран" 
+                       class="w-full px-3.5 py-2.5 rounded-xl bg-[#091519] border-2 border-cyan-700/80 focus:border-cyan-400 focus:outline-none text-[#fdf4e2] placeholder-[#577278] font-sans text-sm transition-colors shadow-inner" />
+            </div>
+
+            <!-- Кнопки действий -->
+            <div class="pt-2 space-y-2">
+                <button type="submit"
+                        class="w-full py-3.5 px-4 rounded-xl font-heading font-black text-sm sm:text-base uppercase tracking-wider text-cyan-100 bg-gradient-to-b from-cyan-700 via-cyan-800 to-cyan-950 hover:from-cyan-600 hover:to-cyan-900 border-2 border-cyan-400 shadow-[0_4px_16px_rgba(6,182,212,0.4)] active:scale-95 transition-all duration-200 cursor-pointer flex items-center justify-center gap-2">
+                    <span>🛠️</span>
+                    <span>ПОДТВЕРДИТЬ ТЕХНИЧЕСКИЙ РЕРОЛЛ</span>
+                </button>
+
+                <button type="button"
+                        onclick="document.getElementById('roulette-modal').remove()"
+                        class="w-full py-2.5 px-4 rounded-xl font-heading font-bold text-xs uppercase tracking-wider text-[#a4bcc2] hover:text-white bg-transparent hover:bg-white/5 border border-cyan-900 transition cursor-pointer text-center">
+                    Отмена
+                </button>
+            </div>
+        </form>
+
+    </div>
+
+</div>

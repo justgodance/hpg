@@ -4,7 +4,7 @@ from pathlib import Path
 import random
 import re
 import shutil
-from typing import Optional
+from typing import Any, Optional
 import uuid
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -409,6 +409,7 @@ async def render_profile_view(
     in_progress_count = sum(1 for q in raw_history if q.status == QuestStatus.IN_PROGRESS)
     finished_count = completed_count + dropped_count
     win_rate = round((completed_count / finished_count) * 100, 1) if finished_count > 0 else 0.0
+    total_actual_hours = round(sum(q.actual_hours for q in raw_history if q.actual_hours is not None), 1)
 
     user_rank = next((idx + 1 for idx, u in enumerate(users) if u.id == target_user.id), None)
 
@@ -417,6 +418,7 @@ async def render_profile_view(
         "completed_count": completed_count,
         "dropped_count": dropped_count,
         "in_progress_count": in_progress_count,
+        "total_actual_hours": total_actual_hours,
         "win_rate": win_rate,
         "rank": user_rank or len(users),
     }
@@ -884,14 +886,20 @@ async def take_quest_endpoint(
     base_reward = round(winning_game.reward_points * (1.0 + bonus_pct))
     candidate_reward = round(base_reward * inflation_mult)
 
-    # 5. Генерация списка игр с картинками для барабана рулетки
+async def _build_roulette_reel(
+    db: AsyncSession,
+    quest: Quest,
+    winning_game: Game,
+    winning_title: str,
+) -> tuple[list[dict[str, Any]], list[str], int]:
     fake_needed = settings.ROULETTE_OPTIONS_COUNT - 1
+    exclude_set = {winning_title}
     reel_candidates = query_games_from_parser_db(
         tag=quest.tag_filter,
         min_hours=quest.min_hltb_hours,
         max_hours=quest.max_hltb_hours,
         min_rating=quest.min_rating,
-        exclude_titles={winning_title},
+        exclude_titles=exclude_set,
         limit=fake_needed,
     )
 
@@ -967,6 +975,13 @@ async def take_quest_endpoint(
     roulette_games = roulette_games[: settings.ROULETTE_OPTIONS_COUNT]
     winning_index = penultimate_idx
     roulette_titles = [g["title"] for g in roulette_games]
+    return roulette_games, roulette_titles, winning_index
+
+
+    # 5. Генерация списка игр с картинками для барабана рулетки
+    roulette_games, roulette_titles, winning_index = await _build_roulette_reel(
+        db, quest, winning_game, winning_title
+    )
 
     # 6. МГНОВЕННО ФИКСИРУЕМ ВЗЯТИЕ КВЕСТА В БАЗЕ ДАННЫХ!
     # Игрок НЕ МОЖЕТ отменить выпавшую игру обновлением страницы (F5) или закрытием вкладки.
@@ -1339,9 +1354,10 @@ async def web_complete_quest(
     user_id: Optional[int] = Query(None),
     form_user_id: Optional[int] = Form(None),
     challenge_status: Optional[str] = Form(None),
+    actual_hours: Optional[float] = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Completes active quest: computes challenge bonus/penalty, updates score and board."""
+    """Completes active quest: records actual_hours, computes challenge bonus/penalty, updates score and board."""
     quest = await get_quest_by_id(db, quest_id)
     if not quest:
         raise HTTPException(status_code=404, detail="Квест не найден")
@@ -1354,19 +1370,33 @@ async def web_complete_quest(
     if quest.user_id != caller_uid:
         raise HTTPException(status_code=403, detail="Вы не можете взаимодействовать с чужим квестом!")
 
-    # 1. Resolve challenge_status from Form, Query, or JSON body
+    # 1. Resolve challenge_status and actual_hours from Form, Query, or JSON body
     status_choice = challenge_status or request.query_params.get("challenge_status")
-    if not status_choice:
+    hours_val = actual_hours
+    if hours_val is None:
+        raw_hours = request.query_params.get("actual_hours")
+        if raw_hours:
+            try:
+                hours_val = float(raw_hours)
+            except (ValueError, TypeError):
+                pass
+    if not status_choice or hours_val is None:
         try:
             body = await request.json()
             if isinstance(body, dict):
-                status_choice = body.get("challenge_status")
+                if not status_choice:
+                    status_choice = body.get("challenge_status")
+                if hours_val is None and "actual_hours" in body:
+                    try:
+                        hours_val = float(body["actual_hours"])
+                    except (ValueError, TypeError):
+                        pass
         except Exception:
             pass
 
     try:
         quest, points_earned, details = await complete_quest(
-            db, quest_id=quest_id, user_id=caller_uid, challenge_status=status_choice
+            db, quest_id=quest_id, user_id=caller_uid, challenge_status=status_choice, actual_hours=hours_val
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1381,6 +1411,7 @@ async def web_complete_quest(
             "quest_id": quest.id,
             "points_delta": points_earned,
             "new_user_score": quest.user.total_score,
+            "actual_hours": quest.actual_hours,
             "challenge_successful": quest.challenge_successful,
             "details": details,
         }
@@ -1400,7 +1431,8 @@ async def web_complete_quest(
             "is_oob": True,
         }
     )
-    toast_hdr = json.dumps({"showToast": {"type": "success", "message": f"Контракт успешно сдан! Начислено +{points_earned} очков."}})
+    hours_suffix = f" (время: {quest.actual_hours} ч)" if quest.actual_hours else ""
+    toast_hdr = json.dumps({"showToast": {"type": "success", "message": f"Контракт успешно сдан! Начислено +{points_earned} очков{hours_suffix}."}})
     resp = HTMLResponse(content=board_html + clear_modal + stats_bar_html)
     resp.headers["HX-Trigger"] = toast_hdr
     return resp
@@ -1482,89 +1514,9 @@ async def web_reroll_quest(
         return HTMLResponse(content=board_html)
 
     # 3. Формируем барабан рулетки из games.db парсера для красивой анимации вращения
-    fake_needed = settings.ROULETTE_OPTIONS_COUNT - 1
-    exclude_set = {winning_title}
-    reel_candidates = query_games_from_parser_db(
-        tag=updated_quest.tag_filter,
-        min_hours=updated_quest.min_hltb_hours,
-        max_hours=updated_quest.max_hltb_hours,
-        min_rating=updated_quest.min_rating,
-        exclude_titles=exclude_set,
-        limit=fake_needed,
+    roulette_games, roulette_titles, winning_index = await _build_roulette_reel(
+        db, updated_quest, winning_game, winning_title
     )
-
-    fake_games: list[dict[str, Any]] = []
-    for cand in reel_candidates:
-        cand_img = cand.get("image_url") or (f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{cand.get('steam_appid')}/header.jpg" if cand.get("steam_appid") else None)
-        fake_games.append({
-            "title": cand["title"],
-            "image_url": cand_img,
-            "genre": cand.get("tags", ["Игра"])[0] if cand.get("tags") else "Экшен",
-            "hltb_hours": cand.get("hltb_main_story_hours") or 0.0,
-            "developer": cand.get("developer"),
-            "review_percentage": cand.get("review_percentage"),
-        })
-
-    # Дополняем из parser/data/games.db если нужно
-    if len(fake_games) < fake_needed:
-        remaining = fake_needed - len(fake_games)
-        more_candidates = query_games_from_parser_db(
-            exclude_titles={winning_title}.union({g["title"] for g in fake_games}),
-            limit=remaining,
-        )
-        for cand in more_candidates:
-            cand_img = cand.get("image_url") or (f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{cand.get('steam_appid')}/header.jpg" if cand.get("steam_appid") else None)
-            if cand_img:
-                fake_games.append({
-                    "title": cand["title"],
-                    "image_url": cand_img,
-                    "genre": cand.get("tags", ["Игра"])[0] if cand.get("tags") else "Экшен",
-                    "hltb_hours": cand.get("hltb_main_story_hours") or 0.0,
-                    "developer": cand.get("developer"),
-                    "review_percentage": cand.get("review_percentage"),
-                })
-
-    # Дополняем из hpg.db с гарантированной картинкой
-    if len(fake_games) < fake_needed:
-        remaining = fake_needed - len(fake_games)
-        fallback_stmt = (
-            select(Game)
-            .where(
-                Game.title != winning_title,
-                Game.title.not_in([g["title"] for g in fake_games]),
-                Game.image_url.is_not(None),
-                Game.image_url != "",
-            )
-            .order_by(func.random())
-            .limit(remaining)
-        )
-        fb_games = list((await db.execute(fallback_stmt)).scalars().all())
-        for fbg in fb_games:
-            fake_games.append({
-                "title": fbg.title,
-                "image_url": fbg.image_url,
-                "genre": fbg.genre,
-                "hltb_hours": fbg.hltb_hours,
-                "developer": fbg.developer,
-                "review_percentage": fbg.review_percentage,
-            })
-
-    random.shuffle(fake_games)
-
-    winning_dict = {
-        "title": winning_game.title,
-        "image_url": winning_game.image_url,
-        "genre": winning_game.genre,
-        "hltb_hours": winning_game.hltb_hours,
-        "developer": winning_game.developer,
-        "review_percentage": winning_game.review_percentage,
-    }
-
-    penultimate_idx = max(0, settings.ROULETTE_OPTIONS_COUNT - 2)
-    roulette_games = fake_games[:penultimate_idx] + [winning_dict] + fake_games[penultimate_idx:fake_needed]
-    roulette_games = roulette_games[: settings.ROULETTE_OPTIONS_COUNT]
-    winning_index = penultimate_idx
-    roulette_titles = [g["title"] for g in roulette_games]
 
     reroll_penalty_pct = int(settings.REROLL_PENALTY_RATE * updated_quest.reroll_count * 100)
 
@@ -1604,6 +1556,156 @@ async def web_reroll_quest(
     )
 
     toast_hdr = json.dumps({"showToast": {"type": "info", "message": f"Реролл выполнен! Списан 1 реролл (осталось: {user.rerolls_left})."}})
+    resp = HTMLResponse(content=modal_html + stats_oob)
+    resp.headers["HX-Trigger"] = toast_hdr
+    return resp
+
+
+@router.get("/quests/{quest_id}/technical_reroll_modal", response_class=HTMLResponse)
+async def web_get_technical_reroll_modal(
+    request: Request,
+    quest_id: int,
+    user_id: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Отображает модальное окно бесплатного технического реролла (игра не запускается / не подходит по правилам)."""
+    quest = await get_quest_by_id(db, quest_id)
+    if not quest:
+        raise HTTPException(status_code=404, detail="Квест не найден")
+
+    cookie_uid = request.cookies.get("session_user_id")
+    caller_uid = int(cookie_uid) if cookie_uid and cookie_uid.isdigit() else user_id
+    if not caller_uid:
+        raise HTTPException(status_code=401, detail="Необходимо авторизоваться")
+
+    if quest.user_id != caller_uid:
+        raise HTTPException(status_code=403, detail="Вы не можете взаимодействовать с чужим квестом!")
+
+    if quest.status != QuestStatus.IN_PROGRESS:
+        raise HTTPException(status_code=400, detail="Технический реролл доступен только для активных квестов!")
+
+    current_user = await db.get(User, caller_uid)
+    return templates.TemplateResponse(
+        "partials/technical_reroll_modal.html",
+        {
+            "request": request,
+            "quest": quest,
+            "current_user": current_user,
+        },
+    )
+
+
+@router.post("/quests/{quest_id}/technical_reroll", response_class=HTMLResponse)
+async def web_technical_reroll_quest(
+    request: Request,
+    quest_id: int,
+    user_id: Optional[int] = Query(None),
+    reason_category: Optional[str] = Form(None),
+    comment: Optional[str] = Form(None),
+    direct: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Выполняет БЕСПЛАТНЫЙ технический реролл игры (если игра не запускается, вылетает или не соответствует правилам).
+    Не списывает рероллы пользователя и не начисляет штраф к очкам.
+    Возвращает барабан рулетки с новой игрой из той же категории.
+    """
+    quest = await get_quest_by_id(db, quest_id)
+    if not quest:
+        raise HTTPException(status_code=404, detail="Квест не найден")
+
+    cookie_uid = request.cookies.get("session_user_id")
+    caller_uid = int(cookie_uid) if cookie_uid and cookie_uid.isdigit() else user_id
+    if not caller_uid:
+        raise HTTPException(status_code=401, detail="Необходимо авторизоваться")
+
+    if quest.user_id != caller_uid:
+        raise HTTPException(status_code=403, detail="Вы не можете взаимодействовать с чужим квестом!")
+
+    if quest.status != QuestStatus.IN_PROGRESS:
+        raise HTTPException(status_code=400, detail="Технический реролл доступен только для активных квестов!")
+
+    user = await db.get(User, caller_uid)
+
+    # Формируем читаемую причину технического реролла
+    clean_cat = (reason_category or "").strip() or "Игра не запускается / техническая неисправность"
+    clean_com = (comment or "").strip()
+    full_reason = f"{clean_cat}: {clean_com}" if clean_com else clean_cat
+
+    # Выполняем технический реролл через CRUD (is_technical=True -> рероллы НЕ списываются, штраф НЕ накладывается)
+    updated_quest = await reroll_quest(db, quest_id=quest_id, user_id=caller_uid, is_technical=True, reason=full_reason)
+    await db.refresh(user)
+
+    winning_game = updated_quest.game
+    if winning_game and winning_game.steam_appid:
+        resolved_img = resolve_single_image_url(winning_game.steam_appid, winning_game.image_url)
+        if resolved_img and resolved_img != winning_game.image_url:
+            winning_game.image_url = resolved_img
+            await db.flush()
+    winning_title = winning_game.title if winning_game else "Новая игра"
+
+    category = updated_quest.game.category if updated_quest.game else updated_quest.card_type
+    category_display_map = {
+        "STEAM": "Steam",
+        "GOTY": "GOTY",
+        "PRESET": "Пресет",
+        "SERIES": "Серия игр",
+        "EMULATOR": "Ретро / Эмулятор",
+        "SANTA": "Подарок Санты",
+        "SANTA_TOP": "Топ-хит Санты",
+        "SANTA_COAL": "Уголёк",
+    }
+    category_display = category_display_map.get(category, category)
+
+    if direct:
+        ctx = await get_board_context(request, caller_uid, db)
+        board_html = templates.get_template("partials/board_content.html").render(ctx)
+        return HTMLResponse(content=board_html)
+
+    # Формируем барабан рулетки
+    roulette_games, roulette_titles, winning_index = await _build_roulette_reel(
+        db, updated_quest, winning_game, winning_title
+    )
+
+    reroll_penalty_pct = int(settings.REROLL_PENALTY_RATE * updated_quest.reroll_count * 100)
+
+    # Рендерим модальное окно рулетки с флагом is_technical=True
+    modal_html = templates.get_template("partials/roulette_modal.html").render(
+        {
+            "request": request,
+            "is_reroll": True,
+            "is_technical": True,
+            "technical_reason": full_reason,
+            "quest": updated_quest,
+            "user_id": caller_uid,
+            "current_user": user,
+            "winning_game": winning_game,
+            "winning_title": winning_title,
+            "candidate_reward": updated_quest.locked_reward,
+            "penalty_points": winning_game.penalty_points if winning_game else 50,
+            "category_display": category_display,
+            "reroll_penalty_pct": reroll_penalty_pct,
+            "roulette_games": roulette_games,
+            "roulette_titles": roulette_titles,
+            "winning_index": winning_index,
+            "options_count": len(roulette_games),
+            "duration_sec": 3.5,
+        }
+    )
+
+    all_users = list((await db.execute(select(User))).scalars().all())
+    attach_underdog_flags(all_users)
+
+    stats_oob = templates.get_template("partials/user_stats_bar.html").render(
+        {
+            "current_user": user,
+            "user_active_count": 1,
+            "max_active_quests": settings.MAX_ACTIVE_QUESTS,
+            "is_oob": True,
+        }
+    )
+
+    toast_hdr = json.dumps({"showToast": {"type": "info", "message": "🛠️ Технический реролл выполнен бесплатно! Игра заменена без штрафов."}})
     resp = HTMLResponse(content=modal_html + stats_oob)
     resp.headers["HX-Trigger"] = toast_hdr
     return resp

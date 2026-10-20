@@ -480,8 +480,10 @@ async def reroll_quest(
     quest_id: int,
     user_id: int,
     specific_game_id: Optional[int] = None,
+    is_technical: bool = False,
+    reason: Optional[str] = None,
 ) -> Quest:
-    """Executes reroll: spends 1 user reroll, increments quest reroll count, picks new game from quest's category."""
+    """Executes reroll: if technical, free without penalty; else spends 1 user reroll and increments quest reroll count."""
     quest = await get_quest_by_id(session, quest_id)
     if not quest:
         raise ValueError(f"Квест #{quest_id} не найден")
@@ -493,7 +495,7 @@ async def reroll_quest(
     user = await session.get(User, user_id)
     if not user:
         raise ValueError(f"Пользователь #{user_id} не найден")
-    if user.rerolls_left <= 0:
+    if not is_technical and user.rerolls_left <= 0:
         raise ValueError("У вас нет доступных попыток реролла (rerolls_left = 0)")
 
     # Determine category
@@ -568,8 +570,14 @@ async def reroll_quest(
 
     quest.game_id = new_game.id
     quest.current_rolled_game_id = new_game.id
-    quest.reroll_count += 1
-    user.rerolls_left -= 1
+
+    if is_technical:
+        quest.technical_reroll_count = (quest.technical_reroll_count or 0) + 1
+        if reason:
+            quest.technical_reroll_reason = reason
+    else:
+        quest.reroll_count += 1
+        user.rerolls_left -= 1
 
     await session.commit()
     return await get_quest_by_id(session, quest.id)  # type: ignore
@@ -581,8 +589,9 @@ async def complete_quest(
     quest_id: int,
     user_id: int,
     challenge_status: Optional[str] = None,
+    actual_hours: Optional[float] = None,
 ) -> tuple[Quest, int, dict]:
-    """Marks quest as COMPLETED, calculates final points based on locked_reward, challenge outcome, reroll penalties, and underdog bonuses."""
+    """Marks quest as COMPLETED, records actual_hours, calculates final points based on locked_reward, challenge outcome, reroll penalties, and underdog bonuses."""
     quest = await get_quest_by_id(session, quest_id)
     if not quest:
         raise ValueError(f"Квест #{quest_id} не найден")
@@ -640,6 +649,13 @@ async def complete_quest(
     # 7. Update quest status
     quest.status = QuestStatus.COMPLETED
     quest.completed_at = datetime.now(timezone.utc)
+    if actual_hours is not None:
+        try:
+            val = float(actual_hours)
+            if val > 0:
+                quest.actual_hours = round(val, 1)
+        except (ValueError, TypeError):
+            pass
 
     details = {
         "base_reward": round(base_reward),
@@ -648,10 +664,12 @@ async def complete_quest(
         "challenge_successful": quest.challenge_successful,
         "challenge_multiplier": challenge_mult,
         "reroll_count": quest.reroll_count,
+        "technical_reroll_count": quest.technical_reroll_count,
         "reroll_penalty_pct": int(reroll_penalty_rate * 100),
         "is_underdog": user_is_underdog,
         "underdog_bonus_applied": user_is_underdog,
         "final_reward": final_reward,
+        "actual_hours": quest.actual_hours,
         "recharged_reroll": recharged_reroll,
         "rerolls_left": user.rerolls_left,
         "quests_since_reroll": user.quests_since_reroll,

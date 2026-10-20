@@ -337,21 +337,16 @@
                 {% if current_user and quest.user_id == current_user.id %}
                     <!-- Кнопки управления: Сдать квест / Сбросить (доступны только владельцу) -->
                     <div class="grid grid-cols-2 gap-2.5">
-                        {% if quest.challenge_id %}
                         <button hx-get="/quests/{{ quest.id }}/completion_modal"
                                 hx-target="#completion-modal-container"
                                 hx-swap="innerHTML"
-                                class="py-2.5 px-3 rounded-lg font-heading font-black text-sm sm:text-base text-amber-100 bg-gradient-to-b from-amber-700 via-amber-800 to-amber-950 hover:from-amber-600 hover:to-amber-900 border-2 border-amber-500 shadow-md active:scale-95 transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer">
-                            ⚖️ Завершить (Челлендж)
-                        </button>
-                        {% else %}
-                        <button hx-post="/quests/{{ quest.id }}/complete"
-                                hx-target="#main-board"
-                                hx-swap="outerHTML"
-                                class="py-2.5 px-3 rounded-lg font-heading font-black text-sm sm:text-base text-white bg-gradient-to-b from-emerald-700 to-emerald-900 hover:from-emerald-600 hover:to-emerald-800 border border-emerald-600 shadow-md active:scale-95 transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer">
+                                class="py-2.5 px-3 rounded-lg font-heading font-black text-sm sm:text-base text-white bg-gradient-to-b from-emerald-700 to-emerald-900 hover:from-emerald-600 hover:to-emerald-800 border border-emerald-500 shadow-md active:scale-95 transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer">
+                            {% if quest.challenge_id %}
+                            ⚖️ Завершить
+                            {% else %}
                             ✅ Завершить
+                            {% endif %}
                         </button>
-                        {% endif %}
 
                         {% if current_user and current_user.free_drops > 0 %}
                         <button hx-post="/quests/{{ quest.id }}/drop"
@@ -392,9 +387,25 @@
                     </button>
                     {% endif %}
 
+                    <!-- Технический бесплатный реролл (если игра не запускается / не подходит) -->
+                    <button hx-get="/quests/{{ quest.id }}/technical_reroll_modal"
+                            hx-target="#roulette-modal-container"
+                            hx-swap="innerHTML"
+                            class="w-full py-2 px-3 rounded-lg font-heading font-bold text-xs sm:text-sm text-cyan-200 bg-gradient-to-b from-[#0c2229] via-[#08181d] to-[#040e12] hover:from-[#11303a] hover:to-[#0a1f26] border border-cyan-600/70 active:scale-95 transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer shadow group"
+                            title="Бесплатная замена, если игра не запускается или не соответствует правилам">
+                        <span class="group-hover:rotate-45 transition-transform duration-300">🛠️</span>
+                        <span>Технический реролл (бесплатно)</span>
+                    </button>
+
                     {% if quest.reroll_count and quest.reroll_count > 0 %}
                     <div class="text-[11px] font-heading text-amber-400 font-bold flex items-center justify-center gap-1 pt-0.5">
                         <span>🎲 Сделано рероллов: {{ quest.reroll_count }} (-{{ quest.reroll_count * 10 }}% штраф)</span>
+                    </div>
+                    {% endif %}
+
+                    {% if quest.technical_reroll_count and quest.technical_reroll_count > 0 %}
+                    <div class="text-[11px] font-heading text-cyan-400 font-bold flex items-center justify-center gap-1 pt-0.5">
+                        <span>🛠️ Тех. рероллов: {{ quest.technical_reroll_count }} (без штрафа)</span>
                     </div>
                     {% endif %}
 

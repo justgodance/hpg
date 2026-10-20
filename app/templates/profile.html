@@ -154,8 +154,8 @@
                     </div>
                 </div>
 
-                <!-- Сетка показателей: 6 плиток -->
-                <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <!-- Сетка показателей: плитки турнирной статистики -->
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                     <div class="bg-[#120904] p-3.5 rounded-xl border border-[#3e1f0e] text-center">
                         <span class="text-[11px] font-heading font-bold text-[#b5987d] uppercase tracking-wider block mb-1">
                             Всего очков
@@ -174,12 +174,12 @@
                         </span>
                     </div>
 
-                    <div class="bg-[#120904] p-3.5 rounded-xl border border-[#3e1f0e] text-center" title="Сброшенные контракты">
+                    <div class="bg-[#120904] p-3.5 rounded-xl border border-[#3e1f0e] text-center" title="Суммарное реальное время, проведенное в завершенных играх">
                         <span class="text-[11px] font-heading font-bold text-[#b5987d] uppercase tracking-wider block mb-1">
-                            Сброшено игр
+                            Наиграно часов
                         </span>
-                        <span class="text-xl sm:text-2xl font-heading font-black text-rose-400 flex items-center justify-center gap-1">
-                            ❌ {{ stats.dropped_count }}
+                        <span class="text-xl sm:text-2xl font-heading font-black text-amber-300 flex items-center justify-center gap-1">
+                            ⏱️ {{ stats.total_actual_hours|default(0) }} ч
                         </span>
                     </div>
 
@@ -189,6 +189,15 @@
                         </span>
                         <span class="text-xl sm:text-2xl font-heading font-black text-cyan-300 flex items-center justify-center gap-1">
                             📈 {{ stats.win_rate }}%
+                        </span>
+                    </div>
+
+                    <div class="bg-[#120904] p-3.5 rounded-xl border border-[#3e1f0e] text-center" title="Сброшенные контракты">
+                        <span class="text-[11px] font-heading font-bold text-[#b5987d] uppercase tracking-wider block mb-1">
+                            Сброшено игр
+                        </span>
+                        <span class="text-xl sm:text-2xl font-heading font-black text-rose-400 flex items-center justify-center gap-1">
+                            ❌ {{ stats.dropped_count }}
                         </span>
                     </div>
 
@@ -404,9 +413,16 @@
                             {% endif %}
 
                             {% if game_item and game_item.hltb_hours %}
-                            <span class="flex items-center gap-1 text-amber-400 font-mono">
-                                <span>⏱️</span>
+                            <span class="flex items-center gap-1 text-amber-400 font-mono" title="Время по HowLongToBeat">
+                                <span>⏱️ HLTB:</span>
                                 <span>{{ game_item.hltb_hours }} ч</span>
+                            </span>
+                            {% endif %}
+
+                            {% if q.actual_hours %}
+                            <span class="flex items-center gap-1 text-emerald-300 font-mono font-bold" title="Реально затраченное время">
+                                <span>🎮 Факт:</span>
+                                <span>{{ q.actual_hours }} ч</span>
                             </span>
                             {% endif %}
 
@@ -418,9 +434,16 @@
                             {% endif %}
 
                             {% if q.reroll_count and q.reroll_count > 0 %}
-                            <span class="flex items-center gap-1 text-amber-400 font-mono" title="Использовано рероллов">
+                            <span class="flex items-center gap-1 text-amber-400 font-mono" title="Использовано обычных рероллов">
                                 <span>🎲</span>
                                 <span>{{ q.reroll_count }} реролл(ов) (-{{ q.reroll_count * 10 }}%)</span>
+                            </span>
+                            {% endif %}
+
+                            {% if q.technical_reroll_count and q.technical_reroll_count > 0 %}
+                            <span class="flex items-center gap-1 text-cyan-300 font-mono" title="Использовано технических рероллов (игра не запускалась или не подошла по правилам)">
+                                <span>🛠️</span>
+                                <span>{{ q.technical_reroll_count }} тех. реролл(ов)</span>
                             </span>
                             {% endif %}
                         </div>

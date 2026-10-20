@@ -22,6 +22,18 @@ class QuestTakeRequest(BaseModel):
     challenge_id: int | None = Field(default=None, description="Опциональный ID выбранного модификатора")
 
 
+class QuestCompleteRequest(BaseModel):
+    user_id: int | None = Field(default=None, description="ID пользователя")
+    challenge_status: str | None = Field(default=None, description="Статус выполнения челленджа: success или failed")
+    actual_hours: float | None = Field(default=None, ge=0.1, le=999.0, description="Реальное время прохождения в часах")
+
+
+class TechnicalRerollRequest(BaseModel):
+    user_id: int | None = Field(default=None, description="ID пользователя")
+    reason: str | None = Field(default="game_crash", description="Причина технического реролла")
+    details: str | None = Field(default=None, description="Дополнительные детали")
+
+
 class QuestGameRead(BaseModel):
     id: int
     steam_appid: int | None = None
@@ -95,6 +107,8 @@ class QuestResponse(BaseModel):
     game_list_ids: list[int] = Field(default_factory=list)
     current_rolled_game_id: int | None = None
     reroll_count: int = 0
+    technical_reroll_count: int = 0
+    technical_reroll_reason: str | None = None
     is_underdog_only: bool = False
 
     # Inflation & conveyor mechanics
@@ -104,6 +118,7 @@ class QuestResponse(BaseModel):
     created_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    actual_hours: float | None = None
 
     game: QuestGameRead | None = None
     current_rolled_game: QuestGameRead | None = None

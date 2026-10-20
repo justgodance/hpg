@@ -82,6 +82,8 @@ class Quest(Base):
         index=True,
     )
     reroll_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    technical_reroll_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    technical_reroll_reason: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     is_underdog_only: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Inflation & Conveyor mechanics
@@ -107,6 +109,11 @@ class Quest(Base):
     completed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+    )
+    actual_hours: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+        default=None,
     )
 
     # Relationships

@@ -81,6 +81,12 @@ async def init_db() -> None:
                     connection.exec_driver_sql("ALTER TABLE quests ADD COLUMN max_hltb_hours FLOAT DEFAULT NULL")
                 if "min_rating" not in quest_cols:
                     connection.exec_driver_sql("ALTER TABLE quests ADD COLUMN min_rating FLOAT DEFAULT NULL")
+                if "actual_hours" not in quest_cols:
+                    connection.exec_driver_sql("ALTER TABLE quests ADD COLUMN actual_hours FLOAT DEFAULT NULL")
+                if "technical_reroll_count" not in quest_cols:
+                    connection.exec_driver_sql("ALTER TABLE quests ADD COLUMN technical_reroll_count INTEGER DEFAULT 0 NOT NULL")
+                if "technical_reroll_reason" not in quest_cols:
+                    connection.exec_driver_sql("ALTER TABLE quests ADD COLUMN technical_reroll_reason VARCHAR(255) DEFAULT NULL")
 
                 # 3. Users table
                 res_user = connection.exec_driver_sql("PRAGMA table_info(users)").fetchall()
