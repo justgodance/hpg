@@ -27,6 +27,7 @@ class Database:
                     steam_appid INTEGER PRIMARY KEY,
                     title TEXT NOT NULL,
                     image_url TEXT,
+                    has_valid_image INTEGER DEFAULT 1,
                     review_percentage REAL,
                     review_count INTEGER,
                     review_desc TEXT,
@@ -47,6 +48,7 @@ class Database:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_games_release_date ON games (release_date);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_games_hltb_status ON games (hltb_status);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_games_title ON games (title);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_games_valid_image ON games (has_valid_image);")
             conn.commit()
 
     def get_existing_appids(self) -> Set[int]:
@@ -91,19 +93,23 @@ class Database:
 
                 cursor.execute("""
                     INSERT INTO games (
-                        steam_appid, title, image_url, review_percentage,
+                        steam_appid, title, image_url, has_valid_image, review_percentage,
                         review_count, review_desc, release_date_raw, release_date,
                         developer, tags, steam_url, hltb_game_id, hltb_game_name,
                         hltb_url, hltb_main_story_hours, hltb_status, updated_at
                     ) VALUES (
-                        :steam_appid, :title, :image_url, :review_percentage,
+                        :steam_appid, :title, :image_url, :has_valid_image, :review_percentage,
                         :review_count, :review_desc, :release_date_raw, :release_date,
                         :developer, :tags, :steam_url, :hltb_game_id, :hltb_game_name,
                         :hltb_url, :hltb_main_story_hours, :hltb_status, CURRENT_TIMESTAMP
                     )
                     ON CONFLICT(steam_appid) DO UPDATE SET
                         title = excluded.title,
-                        image_url = COALESCE(excluded.image_url, games.image_url),
+                        image_url = CASE 
+                            WHEN excluded.image_url IS NOT NULL AND excluded.image_url != '' THEN excluded.image_url 
+                            ELSE games.image_url 
+                        END,
+                        has_valid_image = COALESCE(excluded.has_valid_image, games.has_valid_image),
                         review_percentage = COALESCE(excluded.review_percentage, games.review_percentage),
                         review_count = COALESCE(excluded.review_count, games.review_count),
                         review_desc = COALESCE(excluded.review_desc, games.review_desc),
@@ -128,6 +134,7 @@ class Database:
                     "steam_appid": g.get("steam_appid"),
                     "title": g.get("title"),
                     "image_url": g.get("image_url"),
+                    "has_valid_image": g.get("has_valid_image", 1),
                     "review_percentage": g.get("review_percentage"),
                     "review_count": g.get("review_count"),
                     "review_desc": g.get("review_desc"),

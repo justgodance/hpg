@@ -77,10 +77,15 @@ class ParserApplication:
         appid = game["steam_appid"]
         title = game["title"]
 
-        # 1. Fetch Steam Details (developer & tags)
+        # 1. Fetch Steam Details (developer, tags, official header image)
         details = self.steam.fetch_game_details(appid)
         game["developer"] = details.get("developer")
         game["tags"] = details.get("tags") or []
+        if details.get("image_url"):
+            game["image_url"] = details["image_url"]
+            game["has_valid_image"] = 1
+        elif game.get("image_url"):
+            game["has_valid_image"] = 1
 
         # 2. Fetch HLTB (if requested)
         if query_hltb:

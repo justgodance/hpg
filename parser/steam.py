@@ -197,11 +197,12 @@ class SteamClient:
                     release_date_raw = date_el.text.strip() if date_el else ""
                     parsed_date = parse_steam_date(release_date_raw)
 
-                    # Image URL: preserve Steam hash directory if present in search_capsule
+                    # Image URL: prefer header.jpg for standard Steam catalog, fallback to capsule
                     img_el = row.select_one(".search_capsule img")
                     capsule_img = img_el.get("src") if img_el else None
-                    if capsule_img:
-                        # Steam hash CDN is specific to capsule image filename; keeping it guarantees HTTP 200
+                    if appid < 3000000:
+                        image_url = f"{STEAM_IMAGE_BASE}/{appid}/header.jpg"
+                    elif capsule_img:
                         image_url = capsule_img
                     else:
                         image_url = f"{STEAM_IMAGE_BASE}/{appid}/header.jpg"
@@ -253,11 +254,12 @@ class SteamClient:
         except Exception as e:
             logger.debug(f"Hover tags failed for appid {appid}: {e}")
 
-        # 2. Fetch developer from appdetails
+        # 2. Fetch developer and official header image from appdetails
+        image_url = None
         try:
             params = {
                 "appids": str(appid),
-                "filters": "developers,genres,release_date",
+                "filters": "basic,developers,genres,release_date",
                 "l": "english"
             }
             resp = self.session.get(STEAM_APP_DETAILS_URL, params=params, timeout=DEFAULT_TIMEOUT)
@@ -265,6 +267,7 @@ class SteamClient:
                 data = resp.json().get(str(appid), {})
                 if data.get("success"):
                     app_data = data.get("data", {})
+                    image_url = app_data.get("header_image") or app_data.get("capsule_image")
                     devs = app_data.get("developers", [])
                     if devs:
                         developer = ", ".join(devs)
@@ -283,5 +286,6 @@ class SteamClient:
         time.sleep(STEAM_DETAIL_DELAY)
         return {
             "developer": developer,
-            "tags": tags
+            "tags": tags,
+            "image_url": image_url
         }
