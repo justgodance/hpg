@@ -295,7 +295,8 @@
                     <span>СЛОТ ЗАНЯТ ({{ user_active_count|default(1) }}/{{ max_active_quests|default(1) }})</span>
                 </button>
             {% elif card_type_str == 'SANTA' or quest.is_santa_box %}
-            <button hx-post="/quests/{{ quest.id }}/take?user_id={{ current_user.id if current_user else 1 }}"
+            <button type="button"
+                    hx-post="/quests/{{ quest.id }}/take?user_id={{ current_user.id if current_user else 1 }}"
                     hx-target="#roulette-modal-container"
                     hx-swap="innerHTML"
                     class="w-full py-3 px-4 rounded-lg font-heading font-black text-sm sm:text-base uppercase tracking-widest text-[#fcf0db] bg-gradient-to-b from-[#8f1d1d] via-[#751616] to-[#4e0c0c] hover:from-[#a82424] hover:to-[#631010] active:scale-95 transition-all duration-200 border-2 border-[#b83232] shadow-[0_4px_14px_rgba(80,10,10,0.7)] hover:shadow-[0_4px_20px_rgba(180,30,30,0.85)] flex items-center justify-center gap-2 cursor-pointer">
@@ -303,7 +304,8 @@
                 <span>ИСПЫТАТЬ СУДЬБУ</span>
             </button>
             {% else %}
-            <button hx-post="/quests/{{ quest.id }}/take?user_id={{ current_user.id if current_user else 1 }}"
+            <button type="button"
+                    hx-post="/quests/{{ quest.id }}/take?user_id={{ current_user.id if current_user else 1 }}"
                     hx-target="#roulette-modal-container"
                     hx-swap="innerHTML"
                     class="w-full py-3 px-4 rounded-lg font-heading font-black text-sm sm:text-base uppercase tracking-widest text-[#fcf0db] bg-gradient-to-b from-[#8f1d1d] via-[#751616] to-[#4e0c0c] hover:from-[#a82424] hover:to-[#631010] active:scale-95 transition-all duration-200 border-2 border-[#b83232] shadow-[0_4px_14px_rgba(80,10,10,0.7)] hover:shadow-[0_4px_20px_rgba(180,30,30,0.85)] flex items-center justify-center gap-2 cursor-pointer">

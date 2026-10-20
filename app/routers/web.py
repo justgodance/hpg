@@ -676,6 +676,99 @@ async def get_board_items(
     )
 
 
+async def _build_roulette_reel(
+    db: AsyncSession,
+    quest: Quest,
+    winning_game: Game,
+    winning_title: str,
+) -> tuple[list[dict[str, Any]], list[str], int]:
+    """Генерирует список игр с картинками для барабана рулетки/колеса фортуны."""
+    fake_needed = settings.ROULETTE_OPTIONS_COUNT - 1
+    exclude_set = {winning_title}
+    reel_candidates = query_games_from_parser_db(
+        tag=quest.tag_filter,
+        min_hours=quest.min_hltb_hours,
+        max_hours=quest.max_hltb_hours,
+        min_rating=quest.min_rating,
+        exclude_titles=exclude_set,
+        limit=fake_needed,
+    )
+
+    fake_games: list[dict[str, Any]] = []
+    for cand in reel_candidates:
+        cand_img = cand.get("image_url") or (f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{cand.get('steam_appid')}/header.jpg" if cand.get("steam_appid") else None)
+        fake_games.append({
+            "title": cand["title"],
+            "image_url": cand_img,
+            "genre": cand.get("tags", ["Игра"])[0] if cand.get("tags") else "Экшен",
+            "hltb_hours": cand.get("hltb_main_story_hours") or 0.0,
+            "developer": cand.get("developer"),
+            "review_percentage": cand.get("review_percentage"),
+        })
+
+    # Дополняем из parser/data/games.db если нужно
+    if len(fake_games) < fake_needed:
+        remaining = fake_needed - len(fake_games)
+        more_candidates = query_games_from_parser_db(
+            exclude_titles={winning_title}.union({g["title"] for g in fake_games}),
+            limit=remaining,
+        )
+        for cand in more_candidates:
+            cand_img = cand.get("image_url") or (f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{cand.get('steam_appid')}/header.jpg" if cand.get("steam_appid") else None)
+            if cand_img:
+                fake_games.append({
+                    "title": cand["title"],
+                    "image_url": cand_img,
+                    "genre": cand.get("tags", ["Игра"])[0] if cand.get("tags") else "Экшен",
+                    "hltb_hours": cand.get("hltb_main_story_hours") or 0.0,
+                    "developer": cand.get("developer"),
+                    "review_percentage": cand.get("review_percentage"),
+                })
+
+    # Дополняем из hpg.db с гарантированной картинкой
+    if len(fake_games) < fake_needed:
+        remaining = fake_needed - len(fake_games)
+        fallback_stmt = (
+            select(Game)
+            .where(
+                Game.title != winning_title,
+                Game.title.not_in([g["title"] for g in fake_games]),
+                Game.image_url.is_not(None),
+                Game.image_url != "",
+            )
+            .order_by(func.random())
+            .limit(remaining)
+        )
+        fb_games = list((await db.execute(fallback_stmt)).scalars().all())
+        for fbg in fb_games:
+            fake_games.append({
+                "title": fbg.title,
+                "image_url": fbg.image_url,
+                "genre": fbg.genre,
+                "hltb_hours": fbg.hltb_hours,
+                "developer": fbg.developer,
+                "review_percentage": fbg.review_percentage,
+            })
+
+    random.shuffle(fake_games)
+
+    winning_dict = {
+        "title": winning_game.title,
+        "image_url": winning_game.image_url,
+        "genre": winning_game.genre,
+        "hltb_hours": winning_game.hltb_hours,
+        "developer": winning_game.developer,
+        "review_percentage": winning_game.review_percentage,
+    }
+
+    penultimate_idx = max(0, settings.ROULETTE_OPTIONS_COUNT - 2)
+    roulette_games = fake_games[:penultimate_idx] + [winning_dict] + fake_games[penultimate_idx:fake_needed]
+    roulette_games = roulette_games[: settings.ROULETTE_OPTIONS_COUNT]
+    winning_index = penultimate_idx
+    roulette_titles = [g["title"] for g in roulette_games]
+    return roulette_games, roulette_titles, winning_index
+
+
 @router.post("/quests/{id}/take")
 @router.post("/quests/{id}/take/")
 async def take_quest_endpoint(
@@ -885,98 +978,6 @@ async def take_quest_endpoint(
 
     base_reward = round(winning_game.reward_points * (1.0 + bonus_pct))
     candidate_reward = round(base_reward * inflation_mult)
-
-async def _build_roulette_reel(
-    db: AsyncSession,
-    quest: Quest,
-    winning_game: Game,
-    winning_title: str,
-) -> tuple[list[dict[str, Any]], list[str], int]:
-    fake_needed = settings.ROULETTE_OPTIONS_COUNT - 1
-    exclude_set = {winning_title}
-    reel_candidates = query_games_from_parser_db(
-        tag=quest.tag_filter,
-        min_hours=quest.min_hltb_hours,
-        max_hours=quest.max_hltb_hours,
-        min_rating=quest.min_rating,
-        exclude_titles=exclude_set,
-        limit=fake_needed,
-    )
-
-    fake_games: list[dict[str, Any]] = []
-    for cand in reel_candidates:
-        cand_img = cand.get("image_url") or (f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{cand.get('steam_appid')}/header.jpg" if cand.get("steam_appid") else None)
-        fake_games.append({
-            "title": cand["title"],
-            "image_url": cand_img,
-            "genre": cand.get("tags", ["Игра"])[0] if cand.get("tags") else "Экшен",
-            "hltb_hours": cand.get("hltb_main_story_hours") or 0.0,
-            "developer": cand.get("developer"),
-            "review_percentage": cand.get("review_percentage"),
-        })
-
-    # Дополняем из parser/data/games.db если нужно
-    if len(fake_games) < fake_needed:
-        remaining = fake_needed - len(fake_games)
-        more_candidates = query_games_from_parser_db(
-            exclude_titles={winning_title}.union({g["title"] for g in fake_games}),
-            limit=remaining,
-        )
-        for cand in more_candidates:
-            cand_img = cand.get("image_url") or (f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{cand.get('steam_appid')}/header.jpg" if cand.get("steam_appid") else None)
-            if cand_img:
-                fake_games.append({
-                    "title": cand["title"],
-                    "image_url": cand_img,
-                    "genre": cand.get("tags", ["Игра"])[0] if cand.get("tags") else "Экшен",
-                    "hltb_hours": cand.get("hltb_main_story_hours") or 0.0,
-                    "developer": cand.get("developer"),
-                    "review_percentage": cand.get("review_percentage"),
-                })
-
-    # Дополняем из hpg.db с гарантированной картинкой
-    if len(fake_games) < fake_needed:
-        remaining = fake_needed - len(fake_games)
-        fallback_stmt = (
-            select(Game)
-            .where(
-                Game.title != winning_title,
-                Game.title.not_in([g["title"] for g in fake_games]),
-                Game.image_url.is_not(None),
-                Game.image_url != "",
-            )
-            .order_by(func.random())
-            .limit(remaining)
-        )
-        fb_games = list((await db.execute(fallback_stmt)).scalars().all())
-        for fbg in fb_games:
-            fake_games.append({
-                "title": fbg.title,
-                "image_url": fbg.image_url,
-                "genre": fbg.genre,
-                "hltb_hours": fbg.hltb_hours,
-                "developer": fbg.developer,
-                "review_percentage": fbg.review_percentage,
-            })
-
-    random.shuffle(fake_games)
-
-    winning_dict = {
-        "title": winning_game.title,
-        "image_url": winning_game.image_url,
-        "genre": winning_game.genre,
-        "hltb_hours": winning_game.hltb_hours,
-        "developer": winning_game.developer,
-        "review_percentage": winning_game.review_percentage,
-    }
-
-    penultimate_idx = max(0, settings.ROULETTE_OPTIONS_COUNT - 2)
-    roulette_games = fake_games[:penultimate_idx] + [winning_dict] + fake_games[penultimate_idx:fake_needed]
-    roulette_games = roulette_games[: settings.ROULETTE_OPTIONS_COUNT]
-    winning_index = penultimate_idx
-    roulette_titles = [g["title"] for g in roulette_games]
-    return roulette_games, roulette_titles, winning_index
-
 
     # 5. Генерация списка игр с картинками для барабана рулетки
     roulette_games, roulette_titles, winning_index = await _build_roulette_reel(
