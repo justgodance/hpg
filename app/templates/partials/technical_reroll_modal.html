@@ -38,8 +38,10 @@
         <!-- КАРТОЧКА ТЕКУЩЕЙ ИГРЫ -->
         <div class="w-full p-4 rounded-xl bg-[#0f1d22]/95 border-2 border-cyan-700/60 shadow-lg text-left space-y-3 mb-5">
             {% if current_game and current_game.image_url %}
-            <div class="w-full h-24 sm:h-28 rounded-lg overflow-hidden border border-cyan-600/50 mb-2 shadow-inner">
-                <img src="{{ current_game.image_url }}" alt="{{ current_game.title }}" class="w-full h-full object-cover">
+            <div class="w-full h-24 sm:h-28 rounded-lg overflow-hidden border border-cyan-600/50 mb-2 shadow-inner bg-gradient-to-br from-[#0c181c] to-[#04080a]">
+                <img src="{{ current_game.image_url }}" alt="{{ current_game.title }}"
+                     onerror="if(!this.dataset.tried){this.dataset.tried='1';if(this.src.includes('/capsule_231x87.jpg')){this.src=this.src.replace('/capsule_231x87.jpg','/header.jpg');return;}if(this.src.includes('/header.jpg')){this.src=this.src.replace('/header.jpg','/capsule_231x87.jpg');return;}}this.style.display='none';"
+                     class="w-full h-full object-cover">
             </div>
             {% endif %}
             <div class="flex items-center justify-between border-b border-cyan-900/60 pb-2">

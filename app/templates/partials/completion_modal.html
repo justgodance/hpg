@@ -44,8 +44,10 @@
         <!-- КАРТОЧКА КВЕСТА И ЧЕЛЛЕНДЖА -->
         <div class="w-full p-4 sm:p-5 rounded-xl bg-[#29160c]/95 border-2 border-amber-600/70 shadow-lg text-left space-y-3 mb-5">
             {% if quest.game and quest.game.image_url %}
-            <div class="w-full h-24 sm:h-28 rounded-lg overflow-hidden border border-amber-500/40 mb-2 shadow-inner">
-                <img src="{{ quest.game.image_url }}" alt="{{ quest.game.title }}" class="w-full h-full object-cover">
+            <div class="w-full h-24 sm:h-28 rounded-lg overflow-hidden border border-amber-500/40 mb-2 shadow-inner bg-gradient-to-br from-[#1a0e07] to-[#0c0503]">
+                <img src="{{ quest.game.image_url }}" alt="{{ quest.game.title }}"
+                     onerror="if(!this.dataset.tried){this.dataset.tried='1';if(this.src.includes('/capsule_231x87.jpg')){this.src=this.src.replace('/capsule_231x87.jpg','/header.jpg');return;}if(this.src.includes('/header.jpg')){this.src=this.src.replace('/header.jpg','/capsule_231x87.jpg');return;}}this.style.display='none';"
+                     class="w-full h-full object-cover">
             </div>
             {% endif %}
             <div class="flex items-center justify-between border-b border-[#4d2815] pb-2">

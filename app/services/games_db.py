@@ -33,7 +33,10 @@ def normalize_steam_image_url(url: Optional[str], appid: Optional[int] = None) -
     if not url:
         return f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/header.jpg" if appid else None
     
-    # Valid image URLs (including Steam CDN hash paths for header.jpg and capsule) must be preserved as-is
+    # Always normalize capsule_231x87 to high-resolution header.jpg which is guaranteed on Steam CDN
+    if "/capsule_231x87.jpg" in url:
+        return url.replace("/capsule_231x87.jpg", "/header.jpg")
+
     return url
 
 

@@ -119,9 +119,9 @@
 
                 <!-- Обложка игры из Steam/games.db -->
                 {% if active_game and active_game.image_url %}
-                <div class="relative w-full h-32 sm:h-36 rounded-lg overflow-hidden border-2 border-black/25 shadow-md group bg-[#1a0f07]">
+                <div class="relative w-full h-32 sm:h-36 rounded-lg overflow-hidden border-2 border-black/25 shadow-md group bg-gradient-to-br from-[#2a160a] to-[#120703]">
                     <img src="{{ active_game.image_url }}" alt="{{ active_game.title }}"
-                         onerror="this.style.opacity='0.2';"
+                         onerror="if(!this.dataset.tried){this.dataset.tried='1';if(this.src.includes('/capsule_231x87.jpg')){this.src=this.src.replace('/capsule_231x87.jpg','/header.jpg');return;}if(this.src.includes('/header.jpg')){this.src=this.src.replace('/header.jpg','/capsule_231x87.jpg');return;}}this.style.display='none';"
                          class="w-full h-full object-cover">
                     <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent"></div>
                     <div class="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between text-xs text-stone-200 font-serif italic">

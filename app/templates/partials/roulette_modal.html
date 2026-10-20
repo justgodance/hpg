@@ -92,7 +92,9 @@
                 <!-- Верхний баннер игры -->
                 <div class="relative w-full h-48 sm:h-56 overflow-hidden bg-black">
                     {% if winning_game.image_url %}
-                    <img src="{{ winning_game.image_url }}" alt="{{ winning_title }}" class="w-full h-full object-cover">
+                    <img src="{{ winning_game.image_url }}" alt="{{ winning_title }}"
+                         onerror="if(!this.dataset.tried){this.dataset.tried='1';if(this.src.includes('/capsule_231x87.jpg')){this.src=this.src.replace('/capsule_231x87.jpg','/header.jpg');return;}if(this.src.includes('/header.jpg')){this.src=this.src.replace('/header.jpg','/capsule_231x87.jpg');return;}}this.style.display='none';"
+                         class="w-full h-full object-cover">
                     {% else %}
                     <div class="w-full h-full bg-gradient-to-br from-[#2a1408] to-[#120703] flex items-center justify-center text-4xl">🎮</div>
                     {% endif %}
