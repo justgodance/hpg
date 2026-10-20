@@ -27,6 +27,14 @@ except ImportError:
     from hltb import HLTBClient
     from steam import SteamClient
 
+# Windows UTF-8 support
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -34,6 +42,13 @@ logging.basicConfig(
     datefmt="%H:%M:%S"
 )
 logger = logging.getLogger("parser")
+
+def safe_title_display(title: Optional[str], max_len: int = 25) -> str:
+    """Format title safely for console and progress bars without encoding crashes."""
+    if not title:
+        return ""
+    clean = title.encode("ascii", errors="replace").decode("ascii")
+    return clean[:max_len]
 
 class ParserApplication:
     """Master controller for Steam & HLTB game parser."""
@@ -139,14 +154,21 @@ class ParserApplication:
                 # Reset streak when a new game is discovered
                 consecutive_existing = 0
 
-                # Enrich with developer, tags, and HLTB
-                enriched = self.process_game_details(game, query_hltb=query_hltb)
-                self.db.upsert_game(enriched)
-                existing_appids.add(appid)
+                try:
+                    # Enrich with developer, tags, and HLTB
+                    enriched = self.process_game_details(game, query_hltb=query_hltb)
+                    self.db.upsert_game(enriched)
+                    existing_appids.add(appid)
 
-                added_count += 1
-                pbar.update(1)
-                pbar.set_postfix_str(f"Latest: {enriched['title'][:25]}")
+                    added_count += 1
+                    pbar.update(1)
+                    try:
+                        pbar.set_postfix_str(f"Latest: {safe_title_display(enriched['title'])}")
+                    except Exception:
+                        pass
+                except Exception as e:
+                    logger.warning(f"Error processing game {appid} ({game.get('title')}): {e}")
+                    continue
 
                 if limit and added_count >= limit:
                     logger.info(f"Target limit of {limit} new games reached.")
@@ -163,16 +185,21 @@ class ParserApplication:
         self,
         limit: Optional[int] = None,
         query_hltb: bool = True,
-        sort_by: str = "Released_DESC"
+        sort_by: str = "Released_DESC",
+        start_offset: int = 0
     ) -> None:
         """
         Full Parser:
         Walks the Steam catalog up to the specified limit or entire catalog.
+        Supports resuming via start_offset and automatically fast-forwards through already parsed pages.
         """
         existing_appids = self.db.get_existing_appids()
-        logger.info(f"Starting FULL parse (sort: {sort_by}). Existing games: {len(existing_appids):,}")
+        logger.info(
+            f"Starting FULL parse (sort: {sort_by}, offset: {start_offset:,}). "
+            f"Existing games in DB: {len(existing_appids):,}"
+        )
 
-        start = 0
+        start = start_offset
         batch_size = 50
         processed_count = 0
 
@@ -186,7 +213,14 @@ class ParserApplication:
             )
 
             if not games_batch:
+                logger.info(f"No more games returned at start={start}. Search catalog complete.")
                 break
+
+            # Fast-forward optimization: if all games in this batch are already in DB, skip quickly
+            all_known = all(g["steam_appid"] in existing_appids for g in games_batch if g.get("steam_appid"))
+            if all_known:
+                start += batch_size
+                continue
 
             for game in games_batch:
                 if self.stop_requested:
@@ -200,13 +234,20 @@ class ParserApplication:
                 if appid in existing_appids:
                     continue
 
-                enriched = self.process_game_details(game, query_hltb=query_hltb)
-                self.db.upsert_game(enriched)
-                existing_appids.add(appid)
+                try:
+                    enriched = self.process_game_details(game, query_hltb=query_hltb)
+                    self.db.upsert_game(enriched)
+                    existing_appids.add(appid)
 
-                processed_count += 1
-                pbar.update(1)
-                pbar.set_postfix_str(f"Added: {enriched['title'][:25]}")
+                    processed_count += 1
+                    pbar.update(1)
+                    try:
+                        pbar.set_postfix_str(f"Added: {safe_title_display(enriched['title'])}")
+                    except Exception:
+                        pass
+                except Exception as e:
+                    logger.warning(f"Error processing game {appid} ({game.get('title')}): {e}")
+                    continue
 
                 if limit and processed_count >= limit:
                     self.stop_requested = True
@@ -239,7 +280,10 @@ class ParserApplication:
             self.db.update_hltb_info(appid, hltb_data)
 
             status = f"{hltb_data['hltb_main_story_hours']}h" if hltb_data and hltb_data.get('hltb_main_story_hours') else "N/A"
-            pbar.set_postfix_str(f"{title[:20]} -> {status}")
+            try:
+                pbar.set_postfix_str(f"{safe_title_display(title, 18)} -> {status}")
+            except Exception:
+                pass
 
         pbar.close()
         logger.info("HLTB backfill completed.")
@@ -296,6 +340,12 @@ def main():
         help="Maximum number of games to parse in this run."
     )
     parser.add_argument(
+        "--start-offset",
+        type=int,
+        default=0,
+        help="Start index offset in Steam catalog (useful to resume full mode without scanning from 0)."
+    )
+    parser.add_argument(
         "--skip-hltb",
         action="store_true",
         help="Skip HowLongToBeat lookup during Steam scraping (faster initial download)."
@@ -318,7 +368,12 @@ def main():
     if args.mode == "incremental":
         app.run_incremental(limit=args.limit, query_hltb=not args.skip_hltb)
     elif args.mode == "full":
-        app.run_full(limit=args.limit, query_hltb=not args.skip_hltb, sort_by=args.sort)
+        app.run_full(
+            limit=args.limit,
+            query_hltb=not args.skip_hltb,
+            sort_by=args.sort,
+            start_offset=args.start_offset
+        )
     elif args.mode == "hltb":
         app.run_hltb_backfill(limit=args.limit)
     elif args.mode == "export":

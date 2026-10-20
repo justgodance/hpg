@@ -318,19 +318,19 @@
                 <!-- Игрок, взявший квест -->
                 <div class="text-sm sm:text-base font-heading font-black text-[#3d2010] flex items-center justify-between bg-black/15 px-3 py-1.5 rounded border border-black/15">
                     {% if current_user and quest.user_id == current_user.id %}
-                        <span class="flex items-center gap-1.5 text-amber-950 font-black">
+                        <a href="/profile" class="flex items-center gap-1.5 text-amber-950 font-black hover:underline" title="Ваш профиль">
                             <span class="text-amber-600">⚔️</span> ВЫ ({{ quest.user.username if quest.user else 'Игрок' }})
-                        </span>
+                        </a>
                         <span class="px-2 py-0.5 rounded bg-amber-800 text-amber-100 font-black uppercase text-[11px] sm:text-xs tracking-wider shadow-sm">
                             Ваш контракт
                         </span>
                     {% else %}
-                        <span class="flex items-center gap-1.5 text-stone-700">
+                        <a href="/profile/{{ quest.user_id }}" class="flex items-center gap-1.5 text-stone-700 hover:text-amber-900 hover:underline transition" title="Открыть профиль игрока {{ quest.user.username if quest.user else 'Игрок' }}">
                             <span>👤</span> {{ quest.user.username if quest.user else 'Игрок' }}
-                        </span>
-                        <span class="text-stone-600 font-bold uppercase text-[11px] sm:text-xs">
-                            Соперник
-                        </span>
+                        </a>
+                        <a href="/profile/{{ quest.user_id }}" class="px-2 py-0.5 rounded bg-amber-900/30 hover:bg-amber-900/60 border border-amber-800/40 text-stone-800 hover:text-amber-950 font-bold uppercase text-[11px] sm:text-xs transition flex items-center gap-1" title="Открыть профиль игрока">
+                            <span>Профиль</span> <span>→</span>
+                        </a>
                     {% endif %}
                 </div>
 

@@ -73,12 +73,14 @@ python parser/main.py --mode incremental --limit 50
 ### 2. Сбор каталога (Full Mode)
 Парсит игры каталога Steam (с возможностью сортировки):
 
-```bash
 # Спарсить 100 популярных игр с наивысшими оценками
 python parser/main.py --mode full --limit 100 --sort Reviews_DESC
 
+# Продолжить сбор каталога с определенного смещения (например, после 4000 игр):
+python parser/main.py --mode full --start-offset 4050
+
 # Быстрый сбор каталога без запросов к HLTB (HLTB можно догрузить позже)
-python parser/main.py --mode full --limit 500 --skip-hltb
+python parser/main.py --mode full --start-offset 4050 --skip-hltb
 ```
 
 ### 3. Догрузка данных HowLongToBeat

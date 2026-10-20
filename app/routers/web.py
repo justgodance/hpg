@@ -290,36 +290,170 @@ async def logout_user():
     return resp
 
 
+async def render_profile_view(
+    request: Request,
+    db: AsyncSession,
+    target_user_id: Optional[int] = None,
+) -> Response:
+    """Renders profile page (own or public view of another hunter) with complete game history."""
+    users = await get_or_seed_users(db)
+    attach_underdog_flags(users)
+
+    cookie_uid = request.cookies.get("session_user_id")
+    current_user = None
+    if cookie_uid and cookie_uid.isdigit():
+        current_user = next((u for u in users if u.id == int(cookie_uid)), None)
+
+    # If target_user_id is None, user is viewing their own profile
+    if target_user_id is None:
+        if not current_user:
+            return RedirectResponse("/login", status_code=303)
+        target_user = current_user
+        is_owner = True
+    else:
+        target_user = next((u for u in users if u.id == target_user_id), None)
+        if not target_user:
+            target_user = await db.get(User, target_user_id)
+            if not target_user:
+                raise HTTPException(status_code=404, detail="Игрок не найден")
+            target_user.is_underdog = False
+        is_owner = bool(current_user and current_user.id == target_user.id)
+
+    # 1. Fetch active quest for target_user
+    active_quest = await get_user_active_quest(db, target_user.id)
+    if active_quest:
+        active_game = active_quest.current_rolled_game if (active_quest.is_roulette and active_quest.current_rolled_game) else (active_quest.current_rolled_game or active_quest.game)
+        active_quest.active_game = active_game
+        if active_game:
+            active_quest.cover_url = resolve_single_image_url(
+                appid=active_game.steam_appid,
+                current_url=active_game.image_url,
+            )
+        else:
+            active_quest.cover_url = "/static/avatars/default.svg"
+
+    # 2. Fetch full game history for target_user
+    history_stmt = (
+        select(Quest)
+        .where(
+            Quest.user_id == target_user.id,
+            Quest.status.in_([QuestStatus.COMPLETED, QuestStatus.DROPPED, QuestStatus.IN_PROGRESS]),
+        )
+        .options(
+            selectinload(Quest.game),
+            selectinload(Quest.current_rolled_game),
+            selectinload(Quest.challenge),
+        )
+    )
+    raw_history = list((await db.execute(history_stmt)).scalars().all())
+
+    # Sort history: IN_PROGRESS first, then completed/dropped by completed_at desc (or started_at / id)
+    def history_sort_key(q: Quest):
+        is_in_prog = 1 if q.status == QuestStatus.IN_PROGRESS else 0
+        timestamp = 0.0
+        if q.completed_at:
+            timestamp = q.completed_at.timestamp()
+        elif q.started_at:
+            timestamp = q.started_at.timestamp()
+        elif q.created_at:
+            timestamp = q.created_at.timestamp()
+        else:
+            timestamp = float(q.id)
+        return (is_in_prog, timestamp, q.id)
+
+    raw_history.sort(key=history_sort_key, reverse=True)
+
+    # 3. Enrich each quest with display properties
+    for q in raw_history:
+        active_game = q.current_rolled_game if (q.is_roulette and q.current_rolled_game) else (q.current_rolled_game or q.game)
+        q.active_game = active_game
+
+        # Resolve cover image URL
+        img = None
+        if active_game:
+            img = resolve_single_image_url(
+                appid=active_game.steam_appid,
+                current_url=active_game.image_url,
+            )
+        q.cover_url = img or "/static/avatars/default.svg"
+
+        # Compute points display
+        if q.status == QuestStatus.COMPLETED:
+            base = q.locked_reward if q.locked_reward is not None else (active_game.reward_points if active_game else 100)
+            mult = 1.0
+            if q.challenge:
+                if q.challenge_successful is True:
+                    mult = q.challenge.bonus_multiplier
+                elif q.challenge_successful is False:
+                    mult = q.challenge.penalty_multiplier
+            reroll_pen = min(1.0, settings.REROLL_PENALTY_RATE * q.reroll_count)
+            earned = round(base * mult * (1.0 - reroll_pen))
+            q.points_display = f"+{earned} ★"
+            q.points_badge_class = "text-emerald-300 bg-emerald-950/80 border-emerald-600/70 shadow-[0_0_10px_rgba(16,185,129,0.25)]"
+        elif q.status == QuestStatus.DROPPED:
+            pen = active_game.penalty_points if active_game else 50
+            q.points_display = f"-{pen} ★"
+            q.points_badge_class = "text-rose-300 bg-rose-950/80 border-rose-600/70"
+        else:
+            base = q.locked_reward if q.locked_reward is not None else (active_game.reward_points if active_game else 100)
+            q.points_display = f"+{base} ★ (в игре)"
+            q.points_badge_class = "text-cyan-300 bg-cyan-950/80 border-cyan-600/70"
+
+        # Date display
+        date_obj = q.completed_at or q.started_at or q.created_at
+        q.date_display = date_obj.strftime("%d.%m.%Y %H:%M") if date_obj else "—"
+
+    # 4. Compute statistics
+    completed_count = sum(1 for q in raw_history if q.status == QuestStatus.COMPLETED)
+    dropped_count = sum(1 for q in raw_history if q.status == QuestStatus.DROPPED)
+    in_progress_count = sum(1 for q in raw_history if q.status == QuestStatus.IN_PROGRESS)
+    finished_count = completed_count + dropped_count
+    win_rate = round((completed_count / finished_count) * 100, 1) if finished_count > 0 else 0.0
+
+    user_rank = next((idx + 1 for idx, u in enumerate(users) if u.id == target_user.id), None)
+
+    stats = {
+        "total_games": len(raw_history),
+        "completed_count": completed_count,
+        "dropped_count": dropped_count,
+        "in_progress_count": in_progress_count,
+        "win_rate": win_rate,
+        "rank": user_rank or len(users),
+    }
+
+    return templates.TemplateResponse(
+        "profile.html",
+        {
+            "request": request,
+            "user": target_user,
+            "current_user": current_user,
+            "is_owner": is_owner,
+            "active_quest": active_quest,
+            "game_history": raw_history,
+            "stats": stats,
+            "leaderboard": users,
+            "active_page": "profile" if is_owner else "leaderboard",
+        },
+    )
+
+
 @router.get("/profile", response_class=HTMLResponse)
 async def profile_page(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Renders the logged-in hunter's Personal Cabinet (Личный кабинет)."""
-    cookie_uid = request.cookies.get("session_user_id")
-    if not cookie_uid or not cookie_uid.isdigit():
-        return RedirectResponse("/login", status_code=303)
+    return await render_profile_view(request, db, target_user_id=None)
 
-    users = await get_or_seed_users(db)
-    attach_underdog_flags(users)
 
-    current_user = next((u for u in users if u.id == int(cookie_uid)), None)
-    if not current_user:
-        return RedirectResponse("/login", status_code=303)
-
-    active_quest = await get_user_active_quest(db, current_user.id)
-
-    return templates.TemplateResponse(
-        "profile.html",
-        {
-            "request": request,
-            "user": current_user,
-            "current_user": current_user,
-            "active_quest": active_quest,
-            "leaderboard": users,
-            "active_page": "profile",
-        },
-    )
+@router.get("/profile/{target_user_id}", response_class=HTMLResponse)
+async def user_profile_page(
+    request: Request,
+    target_user_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Renders public profile and full game history of any tournament player."""
+    return await render_profile_view(request, db, target_user_id=target_user_id)
 
 
 @router.post("/profile/avatar", response_class=HTMLResponse)

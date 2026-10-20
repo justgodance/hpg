@@ -53,19 +53,19 @@
             <!-- 🥈 2 МЕСТО (СЕРЕБРО) -->
             {% if top_2 %}
             <div class="order-2 md:order-1 flex flex-col items-center text-center">
-                <div class="relative mb-3">
+                <a href="/profile/{{ top_2.id }}" class="relative mb-3 group block transition-transform hover:scale-105 cursor-pointer" title="Посмотреть профиль {{ top_2.username }}">
                     <span class="absolute -top-3 -right-2 w-8 h-8 rounded-full bg-stone-300 text-stone-950 font-heading font-black text-sm flex items-center justify-center shadow-lg border-2 border-white z-10">
                         2
                     </span>
-                    <div class="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-4 border-stone-300 shadow-[0_0_20px_rgba(214,211,209,0.4)] bg-[#1a0f08]">
+                    <div class="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-4 border-stone-300 shadow-[0_0_20px_rgba(214,211,209,0.4)] bg-[#1a0f08] group-hover:border-amber-400 transition">
                         <img src="{{ top_2.avatar_url or '/static/avatars/default.svg' }}" alt="{{ top_2.username }}" class="w-full h-full object-cover">
                     </div>
-                </div>
+                </a>
 
                 <span class="text-xs uppercase font-heading font-black text-stone-300 tracking-wider">Серебро</span>
-                <span class="text-base sm:text-lg font-heading font-black text-[#fdf4e2] block truncate max-w-[200px]">
+                <a href="/profile/{{ top_2.id }}" class="text-base sm:text-lg font-heading font-black text-[#fdf4e2] hover:text-amber-300 hover:underline transition block truncate max-w-[200px]" title="Посмотреть профиль {{ top_2.username }}">
                     {{ top_2.username }}
-                </span>
+                </a>
                 <span class="text-base sm:text-lg font-heading font-black text-amber-300 block drop-shadow">
                     ★ {{ top_2.total_score }} очков
                 </span>
@@ -86,7 +86,7 @@
             <!-- 🥇 1 МЕСТО (ЗОЛОТО - ЦЕНТР) -->
             {% if top_1 %}
             <div class="order-1 md:order-2 flex flex-col items-center text-center -translate-y-2">
-                <div class="relative mb-3">
+                <a href="/profile/{{ top_1.id }}" class="relative mb-3 group block transition-transform hover:scale-105 cursor-pointer" title="Посмотреть профиль {{ top_1.username }}">
                     <!-- Корона чемпиона -->
                     <span class="text-3xl sm:text-4xl absolute -top-7 left-1/2 -translate-x-1/2 filter drop-shadow animate-bounce">
                         👑
@@ -94,17 +94,17 @@
                     <span class="absolute -top-2 -right-2 w-9 h-9 rounded-full bg-gradient-to-br from-yellow-300 to-amber-500 text-stone-950 font-heading font-black text-base flex items-center justify-center shadow-xl border-2 border-amber-200 z-10">
                         1
                     </span>
-                    <div class="w-24 h-24 sm:w-32 sm:h-32 rounded-3xl overflow-hidden border-4 border-amber-400 shadow-[0_0_35px_rgba(245,158,11,0.65)] ring-4 ring-amber-500/30 bg-[#1a0f08]">
+                    <div class="w-24 h-24 sm:w-32 sm:h-32 rounded-3xl overflow-hidden border-4 border-amber-400 shadow-[0_0_35px_rgba(245,158,11,0.65)] ring-4 ring-amber-500/30 bg-[#1a0f08] group-hover:border-yellow-200 transition">
                         <img src="{{ top_1.avatar_url or '/static/avatars/default.svg' }}" alt="{{ top_1.username }}" class="w-full h-full object-cover">
                     </div>
-                </div>
+                </a>
 
                 <div class="inline-flex items-center gap-1 px-3 py-0.5 rounded-full bg-amber-950 border border-amber-500 text-amber-300 text-[11px] font-heading font-black uppercase tracking-wider mb-0.5 shadow-md">
                     <span>👑 Лидер Сезона</span>
                 </div>
-                <span class="text-lg sm:text-xl font-heading font-black text-[#fff5e3] block truncate max-w-[220px]">
+                <a href="/profile/{{ top_1.id }}" class="text-lg sm:text-xl font-heading font-black text-[#fff5e3] hover:text-amber-300 hover:underline transition block truncate max-w-[220px]" title="Посмотреть профиль {{ top_1.username }}">
                     {{ top_1.username }}
-                </span>
+                </a>
                 <span class="text-xl sm:text-2xl font-heading font-black text-amber-300 block drop-shadow-[0_2px_8px_rgba(245,158,11,0.6)]">
                     ★ {{ top_1.total_score }} очков
                 </span>
@@ -123,19 +123,19 @@
             <!-- 🥉 3 МЕСТО (БРОНЗА) -->
             {% if top_3 %}
             <div class="order-3 md:order-3 flex flex-col items-center text-center">
-                <div class="relative mb-3">
+                <a href="/profile/{{ top_3.id }}" class="relative mb-3 group block transition-transform hover:scale-105 cursor-pointer" title="Посмотреть профиль {{ top_3.username }}">
                     <span class="absolute -top-3 -right-2 w-8 h-8 rounded-full bg-amber-800 text-amber-100 font-heading font-black text-sm flex items-center justify-center shadow-lg border-2 border-amber-600 z-10">
                         3
                     </span>
-                    <div class="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-4 border-amber-700 shadow-[0_0_20px_rgba(180,83,9,0.4)] bg-[#1a0f08]">
+                    <div class="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-4 border-amber-700 shadow-[0_0_20px_rgba(180,83,9,0.4)] bg-[#1a0f08] group-hover:border-amber-400 transition">
                         <img src="{{ top_3.avatar_url or '/static/avatars/default.svg' }}" alt="{{ top_3.username }}" class="w-full h-full object-cover">
                     </div>
-                </div>
+                </a>
 
                 <span class="text-xs uppercase font-heading font-black text-amber-500 tracking-wider">Бронза</span>
-                <span class="text-base sm:text-lg font-heading font-black text-[#fdf4e2] block truncate max-w-[200px]">
+                <a href="/profile/{{ top_3.id }}" class="text-base sm:text-lg font-heading font-black text-[#fdf4e2] hover:text-amber-300 hover:underline transition block truncate max-w-[200px]" title="Посмотреть профиль {{ top_3.username }}">
                     {{ top_3.username }}
-                </span>
+                </a>
                 <span class="text-base sm:text-lg font-heading font-black text-amber-300 block drop-shadow">
                     ★ {{ top_3.total_score }} очков
                 </span>
@@ -228,16 +228,16 @@
                     </div>
 
                     <!-- Аватарка -->
-                    <div class="w-12 h-12 rounded-2xl overflow-hidden border-2 {% if loop.index == 1 %}border-amber-400{% else %}border-[#542d17]{% endif %} bg-[#160b05] flex-shrink-0 shadow">
+                    <a href="/profile/{{ user.id }}" class="w-12 h-12 rounded-2xl overflow-hidden border-2 {% if loop.index == 1 %}border-amber-400{% else %}border-[#542d17]{% endif %} bg-[#160b05] flex-shrink-0 shadow hover:border-amber-400 hover:scale-105 transition block" title="Посмотреть профиль {{ user.username }}">
                         <img src="{{ user.avatar_url or '/static/avatars/default.svg' }}" alt="{{ user.username }}" class="w-full h-full object-cover">
-                    </div>
+                    </a>
 
                     <!-- Имя игрока и значки -->
                     <div>
                         <div class="flex items-center gap-2">
-                            <span class="text-lg sm:text-xl font-heading font-black {% if current_user and current_user.id == user.id %}text-amber-300{% else %}text-[#fdf4e2]{% endif %}">
+                            <a href="/profile/{{ user.id }}" class="text-lg sm:text-xl font-heading font-black {% if current_user and current_user.id == user.id %}text-amber-300{% else %}text-[#fdf4e2]{% endif %} hover:text-amber-400 hover:underline transition" title="Посмотреть профиль {{ user.username }}">
                                 {{ user.username }}
-                            </span>
+                            </a>
                             {% if current_user and current_user.id == user.id %}
                             <span class="px-2 py-0.5 rounded text-[10px] font-heading font-black uppercase bg-amber-500 text-stone-950 shadow">
                                 ВЫ
@@ -270,7 +270,7 @@
                 </div>
 
                 <!-- Правая часть: Статистика, Квесты, Ресурсы и Очки -->
-                <div class="flex flex-wrap items-center justify-between md:justify-end gap-5 pt-3 md:pt-0 border-t md:border-t-0 border-[#2f180c]">
+                <div class="flex flex-wrap items-center justify-between md:justify-end gap-4 sm:gap-5 pt-3 md:pt-0 border-t md:border-t-0 border-[#2f180c]">
                     
                     <!-- Выполненные квесты -->
                     <div class="flex flex-col items-center sm:items-end">
@@ -299,6 +299,11 @@
                             <span class="text-amber-400">★</span> {{ user.total_score }}
                         </span>
                     </div>
+
+                    <!-- Кнопка перехода в профиль -->
+                    <a href="/profile/{{ user.id }}" class="px-3 py-2 rounded-xl bg-[#201007] hover:bg-[#381c0e] border border-[#5a2e16] hover:border-amber-500 text-xs font-heading font-black text-amber-300 hover:text-white transition flex items-center gap-1.5 shadow" title="Посмотреть профиль игрока">
+                        <span>👤</span> <span>Профиль</span>
+                    </a>
 
                 </div>
 
