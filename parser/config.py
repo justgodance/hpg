@@ -38,8 +38,10 @@ DEFAULT_USER_AGENT = (
     "Chrome/122.0.0.0 Safari/537.36"
 )
 
-DEFAULT_TIMEOUT = 15
-STEAM_SEARCH_DELAY = 1.0  # seconds between search pages
-STEAM_DETAIL_DELAY = 0.5  # seconds between individual game detail calls
-HLTB_DELAY = 0.8          # seconds between HLTB searches to avoid 429
-MAX_RETRIES = 3
+DEFAULT_TIMEOUT = 20
+STEAM_SEARCH_PAGE_SIZE = 100 # Steam allows up to 100 games per search page
+STEAM_SEARCH_DELAY = 2.0     # seconds between search pages to avoid rate limits
+STEAM_DETAIL_DELAY = 0.8     # seconds between individual game detail calls
+HLTB_DELAY = 0.8             # seconds between HLTB searches to avoid 429
+MAX_RETRIES = 5
+COOLDOWN_429_BASE = 30       # base cooldown seconds on HTTP 429

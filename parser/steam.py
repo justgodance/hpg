@@ -15,9 +15,11 @@ try:
         STEAM_IMAGE_BASE,
         DEFAULT_USER_AGENT,
         DEFAULT_TIMEOUT,
+        STEAM_SEARCH_PAGE_SIZE,
         STEAM_SEARCH_DELAY,
         STEAM_DETAIL_DELAY,
         MAX_RETRIES,
+        COOLDOWN_429_BASE,
         TODAY
     )
 except ImportError:
@@ -28,9 +30,11 @@ except ImportError:
         STEAM_IMAGE_BASE,
         DEFAULT_USER_AGENT,
         DEFAULT_TIMEOUT,
+        STEAM_SEARCH_PAGE_SIZE,
         STEAM_SEARCH_DELAY,
         STEAM_DETAIL_DELAY,
         MAX_RETRIES,
+        COOLDOWN_429_BASE,
         TODAY
     )
 
@@ -122,13 +126,18 @@ class SteamClient:
         self.session = requests.Session()
         self.session.headers.update({
             "User-Agent": DEFAULT_USER_AGENT,
-            "Accept-Language": "en-US,en;q=0.9"
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://store.steampowered.com/search/?category1=998",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-origin"
         })
 
     def fetch_search_batch(
         self,
         start: int = 0,
-        count: int = 100,
+        count: int = STEAM_SEARCH_PAGE_SIZE,
         sort_by: str = "Released_DESC"
     ) -> Tuple[List[Dict[str, Any]], int]:
         """
@@ -147,8 +156,15 @@ class SteamClient:
             try:
                 resp = self.session.get(STEAM_SEARCH_URL, params=params, timeout=DEFAULT_TIMEOUT)
                 if resp.status_code == 429:
-                    sleep_time = (attempt + 1) * 5
-                    logger.warning(f"Steam rate limit (429). Pausing {sleep_time}s...")
+                    retry_after = resp.headers.get("Retry-After")
+                    if retry_after and retry_after.isdigit():
+                        sleep_time = int(retry_after) + 2
+                    else:
+                        sleep_time = COOLDOWN_429_BASE * (attempt + 1)
+                    logger.warning(
+                        f"Steam rate limit (429). Server requested cooldown. "
+                        f"Pausing {sleep_time}s (attempt {attempt + 1}/{MAX_RETRIES})..."
+                    )
                     time.sleep(sleep_time)
                     continue
 
@@ -257,8 +273,10 @@ class SteamClient:
                         genres = app_data.get("genres", [])
                         tags = [g.get("description") for g in genres if g.get("description")]
             elif resp.status_code == 429:
-                logger.warning(f"Steam appdetails 429 rate limit on appid {appid}. Sleeping 3s...")
-                time.sleep(3)
+                retry_after = resp.headers.get("Retry-After")
+                sleep_time = int(retry_after) + 2 if retry_after and retry_after.isdigit() else COOLDOWN_429_BASE
+                logger.warning(f"Steam appdetails 429 rate limit on appid {appid}. Cooling down for {sleep_time}s...")
+                time.sleep(sleep_time)
         except Exception as e:
             logger.debug(f"Appdetails failed for appid {appid}: {e}")
 

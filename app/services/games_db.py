@@ -33,9 +33,7 @@ def normalize_steam_image_url(url: Optional[str], appid: Optional[int] = None) -
     if not url:
         return f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/header.jpg" if appid else None
     
-    # Steam CDN hash paths are unique to capsule images; header.jpg with a capsule hash returns 404
-    if re.search(r'/[0-9a-f]{32,45}/header\.jpg', url):
-        return url.replace('/header.jpg', '/capsule_231x87.jpg')
+    # Valid image URLs (including Steam CDN hash paths for header.jpg and capsule) must be preserved as-is
     return url
 
 
@@ -146,7 +144,7 @@ def query_games_from_parser_db(
                 conditions.append("review_percentage >= ?")
                 params.append(min_rating)
 
-        order_clause = "ORDER BY (CASE WHEN image_url LIKE '%shared.fastly%' OR image_url LIKE '%/capsule_%' THEN 0 ELSE 1 END), RANDOM()"
+        order_clause = "ORDER BY (CASE WHEN (steam_appid < 3000000 OR length(image_url) >= 95) THEN 0 ELSE 1 END), RANDOM()"
         where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
         query = f"SELECT * FROM games{where_clause} {order_clause} LIMIT {limit * 2}"
         cur.execute(query, params)

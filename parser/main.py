@@ -15,13 +15,13 @@ if str(PARSER_DIR) not in sys.path:
 from tqdm import tqdm
 
 try:
-    from parser.config import TODAY
+    from parser.config import TODAY, STEAM_SEARCH_PAGE_SIZE, STEAM_SEARCH_DELAY
     from parser.db import Database
     from parser.exporter import DataExporter
     from parser.hltb import HLTBClient
     from parser.steam import SteamClient
 except ImportError:
-    from config import TODAY
+    from config import TODAY, STEAM_SEARCH_PAGE_SIZE, STEAM_SEARCH_DELAY
     from db import Database
     from exporter import DataExporter
     from hltb import HLTBClient
@@ -114,7 +114,7 @@ class ParserApplication:
         logger.info(f"Starting INCREMENTAL parse. Existing games in DB: {len(existing_appids):,}")
 
         start = 0
-        batch_size = 50
+        batch_size = STEAM_SEARCH_PAGE_SIZE
         added_count = 0
         consecutive_existing = 0
 
@@ -200,7 +200,7 @@ class ParserApplication:
         )
 
         start = start_offset
-        batch_size = 50
+        batch_size = STEAM_SEARCH_PAGE_SIZE
         processed_count = 0
 
         pbar = tqdm(desc="Parsing Games", unit=" games")

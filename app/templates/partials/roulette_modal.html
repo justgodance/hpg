@@ -306,13 +306,14 @@
         let isPreloading = true;
 
         // Создание в памяти красивой ведьмачьей обложки-заглушки (если игра удалена из Steam или нет сети)
+        // Возвращает готовый HTMLCanvasElement синхронно — без сетевых задержек и асинхронного toDataURL
         function createProceduralCover(gameTitle, genre) {
             const offCanvas = document.createElement('canvas');
             offCanvas.width = 460;
             offCanvas.height = 215;
             const octx = offCanvas.getContext('2d');
             
-            // Радиальный фон: глубокий темный бархат / кожа
+            // Радиальный фон: глубокий темный бархат / ведьмачья кожа
             const grad = octx.createRadialGradient(230, 107, 30, 230, 107, 240);
             grad.addColorStop(0, '#38160c');
             grad.addColorStop(0.7, '#1f0904');
@@ -361,28 +362,26 @@
             octx.font = '12px monospace';
             octx.fillText('◆  W I T C H E R   C O N T R A C T  ◆', 230, 185);
 
-            const proceduralImg = new Image();
-            proceduralImg.src = offCanvas.toDataURL('image/jpeg', 0.85);
-            return proceduralImg;
+            return offCanvas;
         }
 
         function getCandidateUrls(g) {
             const list = [];
             if (g.image_url) {
                 list.push(g.image_url);
-                if (g.image_url.includes('/header.jpg')) {
-                    list.push(g.image_url.replace('/header.jpg', '/capsule_231x87.jpg'));
-                }
-                if (g.image_url.includes('/capsule_231x87.jpg')) {
-                    list.push(g.image_url.replace('/capsule_231x87.jpg', '/header.jpg'));
+                // Если в URL нет уникального хэша Steam CDN, пробуем парную обложку header <-> capsule
+                if (!/[0-9a-f]{32,45}/i.test(g.image_url)) {
+                    if (g.image_url.includes('/header.jpg')) {
+                        list.push(g.image_url.replace('/header.jpg', '/capsule_231x87.jpg'));
+                    } else if (g.image_url.includes('/capsule_231x87.jpg')) {
+                        list.push(g.image_url.replace('/capsule_231x87.jpg', '/header.jpg'));
+                    }
                 }
             }
-            if (g.steam_appid) {
-                list.push(`https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.steam_appid}/capsule_231x87.jpg`);
-                list.push(`https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${g.steam_appid}/capsule_231x87.jpg`);
+            // Для классических Steam AppID (< 3000000) добавляем стандартные CDN ссылки
+            if (g.steam_appid && g.steam_appid < 3000000) {
                 list.push(`https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${g.steam_appid}/header.jpg`);
-                list.push(`https://cdn.akamai.steamstatic.com/steam/apps/${g.steam_appid}/header.jpg`);
-                list.push(`https://cdn.akamai.steamstatic.com/steam/apps/${g.steam_appid}/capsule_231x87.jpg`);
+                list.push(`https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${g.steam_appid}/capsule_231x87.jpg`);
             }
             return [...new Set(list.filter(Boolean))];
         }
@@ -444,8 +443,7 @@
 
             function tryNext() {
                 if (candIdx >= candidates.length) {
-                    const procedural = createProceduralCover(g.title, g.genre);
-                    loadedImages[idx] = procedural;
+                    // Кандидаты исчерпаны — ячейка уже содержит красивую процедурную обложку
                     loadedCount++;
                     updatePreloaderUI();
                     if (!isSpinning && !spinFinished) drawWheel(currentRotationAngle);
@@ -471,7 +469,15 @@
             tryNext();
         }
 
-        // Запуск параллельной предзагрузки для всех элементов барабана
+        // 1. МГНОВЕННАЯ СИНХРОННАЯ ИНИЦИАЛИЗАЦИЯ:
+        // Все ячейки с миллисекунды 0 получают стильные процедурные ведьмачьи обложки.
+        // Ни одна ячейка никогда не будет пустой или с серым текстом!
+        games.forEach((g, idx) => {
+            loadedImages[idx] = createProceduralCover(g.title, g.genre);
+        });
+        if (ctx) drawWheel(0);
+
+        // 2. Параллельная подгрузка официальных артов Steam в высоком разрешении
         games.forEach((g, idx) => loadGameImage(g, idx));
 
         // Максимальный таймаут предзагрузки 2.0с
@@ -548,43 +554,51 @@
 
                 // 2. Отрисовка обложки игры ВО ВСЮ ЯЧЕЙКУ СЕКТОРА (точно по образцу)
                 const img = loadedImages[i];
-                if (img && img.complete && img.naturalWidth > 0) {
-                    ctx.save();
-                    // Поворачиваемся вдоль центральной радиальной оси сектора
-                    ctx.rotate(sliceCenterAngle);
-                    // Перемещаемся к внешнему ободу
-                    ctx.translate(radius, 0);
-                    // Поворачиваем на 90°, чтобы верх обложки смотрел наружу, а низ к центру
-                    ctx.rotate(Math.PI / 2);
+                const isCanvas = (img instanceof HTMLCanvasElement);
+                const isReadyImg = (img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0);
 
-                    // Расчет геометрии для полного покрытия сектора без пустот (object-fit: cover)
-                    const wedgeWidthAtRim = 2 * radius * Math.sin(sliceAngle / 2);
-                    const targetW = wedgeWidthAtRim * 1.25; // чуть шире обода для запаса
-                    const targetH = radius - (hubRadius * 0.35); // от обода до ступицы
+                if (isCanvas || isReadyImg) {
+                    const natW = isCanvas ? img.width : img.naturalWidth;
+                    const natH = isCanvas ? img.height : img.naturalHeight;
 
-                    // Масштаб с сохранением естественных пропорций картинки
-                    const scale = Math.max(targetW / img.naturalWidth, targetH / img.naturalHeight);
-                    const drawW = img.naturalWidth * scale;
-                    const drawH = img.naturalHeight * scale;
+                    if (natW > 0 && natH > 0) {
+                        ctx.save();
+                        // Поворачиваемся вдоль центральной радиальной оси сектора
+                        ctx.rotate(sliceCenterAngle);
+                        // Перемещаемся к внешнему ободу
+                        ctx.translate(radius, 0);
+                        // Поворачиваем на 90°, чтобы верх обложки смотрел наружу, а низ к центру
+                        ctx.rotate(Math.PI / 2);
 
-                    // Центрируем изображение по ширине сектора
-                    const drawX = -drawW / 2;
-                    // Располагаем от внешнего обода внутрь к центру
-                    const drawY = -6;
+                        // Расчет геометрии для полного покрытия сектора без пустот (object-fit: cover)
+                        const wedgeWidthAtRim = 2 * radius * Math.sin(sliceAngle / 2);
+                        const targetW = wedgeWidthAtRim * 1.25; // чуть шире обода для запаса
+                        const targetH = radius - (hubRadius * 0.35); // от обода до ступицы
 
-                    ctx.drawImage(img, drawX, drawY, drawW, drawH);
+                        // Масштаб с сохранением естественных пропорций картинки
+                        const scale = Math.max(targetW / natW, targetH / natH);
+                        const drawW = natW * scale;
+                        const drawH = natH * scale;
 
-                    // Легкий градиент у основания ступицы для объемной глубины
-                    const grad = ctx.createLinearGradient(0, 0, 0, drawH);
-                    grad.addColorStop(0, 'rgba(0,0,0,0.0)');
-                    grad.addColorStop(0.75, 'rgba(0,0,0,0.08)');
-                    grad.addColorStop(1, 'rgba(0,0,0,0.55)');
-                    ctx.fillStyle = grad;
-                    ctx.fillRect(drawX, drawY, drawW, drawH);
+                        // Центрируем изображение по ширине сектора
+                        const drawX = -drawW / 2;
+                        // Располагаем от внешнего обода внутрь к центру
+                        const drawY = -6;
 
-                    ctx.restore();
+                        ctx.drawImage(img, drawX, drawY, drawW, drawH);
+
+                        // Легкий градиент у основания ступицы для объемной глубины
+                        const grad = ctx.createLinearGradient(0, 0, 0, drawH);
+                        grad.addColorStop(0, 'rgba(0,0,0,0.0)');
+                        grad.addColorStop(0.75, 'rgba(0,0,0,0.08)');
+                        grad.addColorStop(1, 'rgba(0,0,0,0.55)');
+                        ctx.fillStyle = grad;
+                        ctx.fillRect(drawX, drawY, drawW, drawH);
+
+                        ctx.restore();
+                    }
                 } else {
-                    // Резервный стильный вид ячейки пока картинка загружается
+                    // Резервный стильный вид ячейки
                     ctx.save();
                     ctx.rotate(sliceCenterAngle);
                     ctx.textAlign = 'right';
