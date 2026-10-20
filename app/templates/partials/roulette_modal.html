@@ -32,11 +32,19 @@
             <h2 class="text-2xl sm:text-3xl font-heading font-black text-[#fdf4e2] tracking-wide uppercase drop-shadow">
                 {% if is_technical %}Тех. Реролл: {{ quest.card_title or "Замена игры" }}{% elif is_reroll %}Реролл: {{ quest.card_title or "Случайный выбор" }}{% else %}{{ quest.card_title or "Колесо Квеста" }}{% endif %}
             </h2>
-            <div class="flex items-center justify-center gap-3 text-xs sm:text-sm text-[#ecd7be] font-serif italic">
-                <span>{% if is_technical %}Колесо вращается... Бесплатная замена нерабочей игры! Рероллы не списаны (осталось: {{ current_user.rerolls_left if current_user else 0 }}).{% elif is_reroll %}Колесо вращается... Ищем новую игру! Списан 1 реролл (осталось: {{ current_user.rerolls_left if current_user else 0 }}).{% else %}Колесо вращается... Выбираем игру из базы данных!{% endif %}</span>
-                <button type="button" onclick="finishSpinNow()"
-                        class="px-2.5 py-0.5 rounded bg-amber-950/80 hover:bg-amber-900 border border-amber-600/70 text-amber-300 text-xs font-heading font-bold not-italic transition-all cursor-pointer shadow-sm">
-                    ⚡ Пропустить
+            <div id="wheel-status-subtitle" class="flex items-center justify-center gap-3 text-xs sm:text-sm text-[#ecd7be] font-serif italic">
+                <span id="wheel-status-text">
+                    {% if is_technical %}
+                        Бесплатная замена нерабочей игры! Нажмите «КРУТИТЬ», чтобы запустить колесо.
+                    {% elif is_reroll %}
+                        Списан 1 реролл (осталось: {{ current_user.rerolls_left if current_user else 0 }}). Нажмите «КРУТИТЬ», чтобы запустить колесо.
+                    {% else %}
+                        Нажмите «КРУТИТЬ» в центре колеса или кликните по нему!
+                    {% endif %}
+                </span>
+                <button type="button" id="wheel-skip-btn" onclick="finishSpinNow()"
+                        class="px-2.5 py-0.5 rounded bg-amber-950/80 hover:bg-amber-900 border border-amber-600/70 text-amber-300 text-xs font-heading font-bold not-italic transition-all cursor-pointer shadow-sm active:scale-95">
+                    ⚡ Сразу результат
                 </button>
             </div>
         </div>
@@ -58,19 +66,23 @@
                 <!-- Canvas 1200x1200 для сверхчеткой графики, отображается в 600px -->
                 <canvas id="fortune-wheel-canvas" width="1200" height="1200"
                         style="width: 600px; height: 600px; max-width: 90vw; max-height: 64vh; display: block; border-radius: 50%; cursor: pointer;"
-                        onclick="finishSpinNow()"></canvas>
+                        onclick="handleWheelInteraction()"></canvas>
                 
-                <!-- Центральная круглая кнопка / медальон START ROLL (точно как на фото-образце) -->
-                <div class="absolute inset-0 m-auto w-28 h-28 rounded-full bg-[#1c1c1e] border-4 border-white shadow-[0_0_24px_rgba(255,255,255,0.4)] flex flex-col items-center justify-center cursor-pointer select-none text-center transition-transform hover:scale-105 active:scale-95 z-20"
-                     onclick="finishSpinNow()"
-                     title="Нажмите чтобы остановить или пропустить вращение">
-                    <span class="text-xs sm:text-sm font-black text-white uppercase tracking-wider leading-tight">START<br>ROLL</span>
+                <!-- Центральная круглая кнопка / медальон КРУТИТЬ РУЛЕТКУ -->
+                <div id="wheel-center-button"
+                     class="absolute inset-0 m-auto w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-gradient-to-b from-[#8f1616] via-[#6d1010] to-[#3a0606] hover:from-[#ab1b1b] hover:to-[#4e0909] border-4 border-amber-300 shadow-[0_0_30px_rgba(239,68,68,0.7),0_0_15px_rgba(252,211,77,0.8)] flex flex-col items-center justify-center cursor-pointer select-none text-center transition-all hover:scale-105 active:scale-95 z-20 group animate-pulse"
+                     onclick="handleWheelInteraction()"
+                     title="Нажмите, чтобы запустить колесо фортуны!">
+                    <span id="wheel-center-icon" class="text-2xl sm:text-3xl filter drop-shadow group-hover:rotate-45 transition-transform duration-300">🎲</span>
+                    <span id="wheel-center-text" class="text-xs sm:text-sm font-heading font-black text-amber-100 uppercase tracking-widest leading-none drop-shadow pt-0.5">
+                        КРУТИТЬ
+                    </span>
                 </div>
             </div>
 
             <!-- Подсказка текущей ячейки под колесом -->
             <div id="wheel-current-game-hint" class="mt-2.5 text-sm sm:text-base font-serif italic text-amber-300/90 h-6 flex items-center justify-center gap-1.5">
-                <span>Крутится...</span>
+                <span>✨ Колесо готово — нажмите «КРУТИТЬ» для запуска!</span>
             </div>
         </div>
 
@@ -281,8 +293,8 @@
         const canvas = document.getElementById('fortune-wheel-canvas');
         const confirmBlock = document.getElementById('roulette-confirm-block');
         const hintEl = document.getElementById('wheel-current-game-hint');
+        let isSpinning = false;
         let spinFinished = false;
-
 
         // Параметры большого Canvas колеса (1200x1200)
         const ctx = canvas ? canvas.getContext('2d') : null;
@@ -300,7 +312,7 @@
                 const img = new Image();
                 img.onload = function() {
                     loadedImages[idx] = img;
-                    if (!startTime || spinFinished) drawWheel(currentRotationAngle);
+                    if (!isSpinning && !spinFinished) drawWheel(currentRotationAngle);
                 };
                 img.onerror = function() {
                     console.warn("Image load failed for:", g.title, g.image_url);
@@ -444,24 +456,15 @@
             ctx.lineWidth = 5;
             ctx.stroke();
 
-            // 5. Центральная ступица колеса с надписью START ROLL (точно как на фото)
+            // 5. Центральная ступица колеса
             ctx.beginPath();
             ctx.arc(0, 0, hubRadius, 0, 2 * Math.PI);
-            ctx.fillStyle = '#1c1c1e';
+            ctx.fillStyle = '#1c0a0a';
             ctx.fill();
-            ctx.strokeStyle = '#ffffff';
+            ctx.strokeStyle = '#f59e0b';
             ctx.lineWidth = 5;
             ctx.stroke();
 
-            // Текст START ROLL внутри центральной ступицы
-            ctx.save();
-            ctx.fillStyle = '#ffffff';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.font = '900 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-            ctx.fillText('START', 0, -14);
-            ctx.fillText('ROLL', 0, 14);
-            ctx.restore();
             ctx.restore();
         }
 
@@ -495,10 +498,58 @@
             }
         }
 
+        function startSpin() {
+            if (isSpinning || spinFinished) return;
+            isSpinning = true;
+
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            const centerBtn = document.getElementById('wheel-center-button');
+            const centerIcon = document.getElementById('wheel-center-icon');
+            const centerText = document.getElementById('wheel-center-text');
+            if (centerBtn) {
+                centerBtn.classList.remove('animate-pulse');
+                centerBtn.setAttribute('title', 'Нажмите, чтобы остановить вращение');
+            }
+            if (centerIcon) centerIcon.textContent = '⏹️';
+            if (centerText) centerText.innerHTML = 'СТОП';
+
+            const statusText = document.getElementById('wheel-status-text');
+            if (statusText) statusText.textContent = 'Колесо вращается... Выбираем игру из базы данных!';
+
+            const skipBtn = document.getElementById('wheel-skip-btn');
+            if (skipBtn) skipBtn.innerHTML = '⚡ Пропустить';
+
+            if (hintEl) hintEl.innerHTML = '<span>🌀 Крутится...</span>';
+
+            startTime = null;
+            requestAnimationFrame(animateWheel);
+        }
+
         function finishSpin() {
             if (spinFinished) return;
             spinFinished = true;
+            isSpinning = false;
             drawWheel(totalRotation);
+
+            const centerBtn = document.getElementById('wheel-center-button');
+            const centerIcon = document.getElementById('wheel-center-icon');
+            const centerText = document.getElementById('wheel-center-text');
+            if (centerBtn) {
+                centerBtn.classList.remove('animate-pulse', 'cursor-pointer');
+                centerBtn.classList.add('cursor-default', 'opacity-90');
+                centerBtn.setAttribute('title', 'Выбор завершен');
+            }
+            if (centerIcon) centerIcon.textContent = '🏆';
+            if (centerText) centerText.innerHTML = 'ГОТОВО';
+
+            const statusText = document.getElementById('wheel-status-text');
+            if (statusText) statusText.textContent = 'Выбор сделан! Контракт уже добавлен в ваши активные квесты.';
+
+            const skipBtn = document.getElementById('wheel-skip-btn');
+            if (skipBtn) skipBtn.style.display = 'none';
 
             if (hintEl && games[winningIndex]) {
                 hintEl.innerHTML = '🏆 <strong class="text-amber-400">Выпало: ' + games[winningIndex].title + '</strong>';
@@ -508,15 +559,25 @@
                 confirmBlock.style.opacity = '1';
                 confirmBlock.style.transform = 'translateY(0)';
                 confirmBlock.style.pointerEvents = 'auto';
+                confirmBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
         }
+
+        window.handleWheelInteraction = function() {
+            if (spinFinished) return;
+            if (!isSpinning) {
+                startSpin();
+            } else {
+                finishSpin();
+            }
+        };
 
         window.finishSpinNow = function() {
             finishSpin();
         };
 
-        // Старт вращения
-        requestAnimationFrame(animateWheel);
+        // Начальная отрисовка колеса в неподвижном состоянии (угол 0)
+        drawWheel(0);
     })();
     </script>
 

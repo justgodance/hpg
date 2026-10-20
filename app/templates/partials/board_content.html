@@ -1,6 +1,6 @@
 {# templates/partials/board_content.html #}
 
-<div id="main-board" class="space-y-8">
+<div id="main-board" {% if is_oob %}hx-swap-oob="outerHTML" {% endif %}class="space-y-8">
 
     <!-- Двухколоночный макет страницы -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">

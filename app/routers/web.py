@@ -999,6 +999,10 @@ async def take_quest_endpoint(
     all_users = list((await db.execute(select(User))).scalars().all())
     attach_underdog_flags(all_users)
 
+    board_ctx = await get_board_context(request, active_uid, db)
+    board_ctx["is_oob"] = True
+    board_html = templates.get_template("partials/board_content.html").render(board_ctx)
+
     stats_bar_html = templates.get_template("partials/user_stats_bar.html").render(
         {
             "current_user": user,
@@ -1026,7 +1030,7 @@ async def take_quest_endpoint(
             "is_reroll": False,
         }
     )
-    return HTMLResponse(content=modal_html + stats_bar_html)
+    return HTMLResponse(content=modal_html + board_html + stats_bar_html)
 
 
 @router.post("/quests/{quest_id}/confirm-take", response_class=HTMLResponse)
@@ -1539,12 +1543,17 @@ async def web_reroll_quest(
             "roulette_titles": roulette_titles,
             "winning_index": winning_index,
             "options_count": len(roulette_games),
-            "duration_sec": 3.5,
+            "duration_sec": settings.ROULETTE_DURATION_SEC,
         }
     )
 
     all_users = list((await db.execute(select(User))).scalars().all())
     attach_underdog_flags(all_users)
+
+    # OOB обновление главной доски и активных квестов
+    board_ctx = await get_board_context(request, caller_uid, db)
+    board_ctx["is_oob"] = True
+    board_html = templates.get_template("partials/board_content.html").render(board_ctx)
 
     # OOB обновление полосы ресурсов в шапке сайта, чтобы рероллы сразу уменьшились (напр. 🎲 0)
     stats_oob = templates.get_template("partials/user_stats_bar.html").render(
@@ -1557,7 +1566,7 @@ async def web_reroll_quest(
     )
 
     toast_hdr = json.dumps({"showToast": {"type": "info", "message": f"Реролл выполнен! Списан 1 реролл (осталось: {user.rerolls_left})."}})
-    resp = HTMLResponse(content=modal_html + stats_oob)
+    resp = HTMLResponse(content=modal_html + board_html + stats_oob)
     resp.headers["HX-Trigger"] = toast_hdr
     return resp
 
@@ -1690,12 +1699,17 @@ async def web_technical_reroll_quest(
             "roulette_titles": roulette_titles,
             "winning_index": winning_index,
             "options_count": len(roulette_games),
-            "duration_sec": 3.5,
+            "duration_sec": settings.ROULETTE_DURATION_SEC,
         }
     )
 
     all_users = list((await db.execute(select(User))).scalars().all())
     attach_underdog_flags(all_users)
+
+    # OOB обновление главной доски и активных квестов
+    board_ctx = await get_board_context(request, caller_uid, db)
+    board_ctx["is_oob"] = True
+    board_html = templates.get_template("partials/board_content.html").render(board_ctx)
 
     stats_oob = templates.get_template("partials/user_stats_bar.html").render(
         {
@@ -1707,7 +1721,7 @@ async def web_technical_reroll_quest(
     )
 
     toast_hdr = json.dumps({"showToast": {"type": "info", "message": "🛠️ Технический реролл выполнен бесплатно! Игра заменена без штрафов."}})
-    resp = HTMLResponse(content=modal_html + stats_oob)
+    resp = HTMLResponse(content=modal_html + board_html + stats_oob)
     resp.headers["HX-Trigger"] = toast_hdr
     return resp
 
