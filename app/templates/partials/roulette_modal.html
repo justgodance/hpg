@@ -613,11 +613,31 @@
             const list = [];
             if (g.image_url) {
                 list.push(g.image_url);
-                if (!/[0-9a-f]{32,45}/i.test(g.image_url)) {
-                    if (g.image_url.includes('/header.jpg')) {
-                        list.push(g.image_url.replace('/header.jpg', '/capsule_231x87.jpg'));
-                    } else if (g.image_url.includes('/capsule_231x87.jpg')) {
-                        list.push(g.image_url.replace('/capsule_231x87.jpg', '/header.jpg'));
+                // 1. Direct twin swap between header.jpg and capsule_231x87.jpg (works even when hash is present)
+                if (g.image_url.includes('/header.jpg')) {
+                    list.push(g.image_url.replace('/header.jpg', '/capsule_231x87.jpg'));
+                } else if (g.image_url.includes('/capsule_231x87.jpg')) {
+                    list.push(g.image_url.replace('/capsule_231x87.jpg', '/header.jpg'));
+                }
+
+                // 2. Alt assets variants
+                if (g.image_url.includes('_alt_assets_')) {
+                    const clean = g.image_url.replace(/_alt_assets_\d+/, '');
+                    list.push(clean);
+                    if (clean.includes('/header.jpg')) {
+                        list.push(clean.replace('/header.jpg', '/capsule_231x87.jpg'));
+                    } else if (clean.includes('/capsule_231x87.jpg')) {
+                        list.push(clean.replace('/capsule_231x87.jpg', '/header.jpg'));
+                    }
+                } else {
+                    if (g.image_url.includes('/capsule_231x87.jpg')) {
+                        list.push(g.image_url.replace('/capsule_231x87.jpg', '/capsule_231x87_alt_assets_1.jpg'));
+                        list.push(g.image_url.replace('/capsule_231x87.jpg', '/capsule_231x87_alt_assets_2.jpg'));
+                        list.push(g.image_url.replace('/capsule_231x87.jpg', '/header_alt_assets_1.jpg'));
+                        list.push(g.image_url.replace('/capsule_231x87.jpg', '/header_alt_assets_2.jpg'));
+                    } else if (g.image_url.includes('/header.jpg')) {
+                        list.push(g.image_url.replace('/header.jpg', '/header_alt_assets_1.jpg'));
+                        list.push(g.image_url.replace('/header.jpg', '/header_alt_assets_2.jpg'));
                     }
                 }
             }
@@ -643,6 +663,7 @@
                 const testUrl = candidates[candIdx++];
                 const img = new Image();
                 img.onload = function() {
+                    g.image_url = testUrl;
                     loadedImages[idx] = img;
                     loadedCount++;
                     updateProgressUI();

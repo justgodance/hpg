@@ -144,7 +144,7 @@ def query_games_from_parser_db(
                 conditions.append("review_percentage >= ?")
                 params.append(min_rating)
 
-        order_clause = "ORDER BY (CASE WHEN (steam_appid < 3000000 OR length(image_url) >= 95) THEN 0 ELSE 1 END), RANDOM()"
+        order_clause = "ORDER BY has_valid_image DESC, (CASE WHEN steam_appid < 3000000 THEN 0 ELSE 1 END), RANDOM()"
         where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
         query = f"SELECT * FROM games{where_clause} {order_clause} LIMIT {limit * 2}"
         cur.execute(query, params)
