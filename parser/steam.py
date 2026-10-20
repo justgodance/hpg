@@ -185,8 +185,8 @@ class SteamClient:
                     img_el = row.select_one(".search_capsule img")
                     capsule_img = img_el.get("src") if img_el else None
                     if capsule_img:
-                        # Convert capsule to high-res header.jpg while keeping hash path
-                        image_url = re.sub(r'capsule_[^/?]+\.jpg', 'header.jpg', capsule_img)
+                        # Steam hash CDN is specific to capsule image filename; keeping it guarantees HTTP 200
+                        image_url = capsule_img
                     else:
                         image_url = f"{STEAM_IMAGE_BASE}/{appid}/header.jpg"
 

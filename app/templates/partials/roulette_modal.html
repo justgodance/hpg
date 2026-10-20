@@ -34,13 +34,7 @@
             </h2>
             <div id="wheel-status-subtitle" class="flex items-center justify-center gap-3 text-xs sm:text-sm text-[#ecd7be] font-serif italic">
                 <span id="wheel-status-text">
-                    {% if is_technical %}
-                        Бесплатная замена нерабочей игры! Нажмите «КРУТИТЬ», чтобы запустить колесо.
-                    {% elif is_reroll %}
-                        Списан 1 реролл (осталось: {{ current_user.rerolls_left if current_user else 0 }}). Нажмите «КРУТИТЬ», чтобы запустить колесо.
-                    {% else %}
-                        Нажмите «КРУТИТЬ» в центре колеса или кликните по нему!
-                    {% endif %}
+                    ⏳ Загрузка обложек игр (0/{{ options_count }})...
                 </span>
                 <button type="button" id="wheel-skip-btn" onclick="finishSpinNow()"
                         class="px-2.5 py-0.5 rounded bg-amber-950/80 hover:bg-amber-900 border border-amber-600/70 text-amber-300 text-xs font-heading font-bold not-italic transition-all cursor-pointer shadow-sm active:scale-95">
@@ -70,19 +64,20 @@
                 
                 <!-- Центральная круглая кнопка / медальон КРУТИТЬ РУЛЕТКУ -->
                 <div id="wheel-center-button"
-                     class="absolute inset-0 m-auto w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-gradient-to-b from-[#8f1616] via-[#6d1010] to-[#3a0606] hover:from-[#ab1b1b] hover:to-[#4e0909] border-4 border-amber-300 shadow-[0_0_30px_rgba(239,68,68,0.7),0_0_15px_rgba(252,211,77,0.8)] flex flex-col items-center justify-center cursor-pointer select-none text-center transition-all hover:scale-105 active:scale-95 z-20 group animate-pulse"
+                     class="absolute inset-0 m-auto w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-gradient-to-b from-[#3a180e] via-[#240e07] to-[#120603] border-4 border-amber-500/80 shadow-[0_0_25px_rgba(245,158,11,0.5)] flex flex-col items-center justify-center cursor-pointer select-none text-center transition-all hover:scale-105 active:scale-95 z-20 group"
                      onclick="handleWheelInteraction()"
-                     title="Нажмите, чтобы запустить колесо фортуны!">
-                    <span id="wheel-center-icon" class="text-2xl sm:text-3xl filter drop-shadow group-hover:rotate-45 transition-transform duration-300">🎲</span>
+                     title="Загрузка обложек... Кликните, чтобы крутить сразу!">
+                    <span id="wheel-center-icon" class="text-2xl sm:text-3xl filter drop-shadow group-hover:rotate-45 transition-transform duration-300">⏳</span>
                     <span id="wheel-center-text" class="text-xs sm:text-sm font-heading font-black text-amber-100 uppercase tracking-widest leading-none drop-shadow pt-0.5">
-                        КРУТИТЬ
+                        <span class="text-[9px] sm:text-[10px] text-amber-200 uppercase tracking-widest block font-heading font-black">ЗАГРУЗКА</span>
+                        <span class="text-[9px] sm:text-[10px] text-amber-400 font-mono block">0/{{ options_count }}</span>
                     </span>
                 </div>
             </div>
 
             <!-- Подсказка текущей ячейки под колесом -->
             <div id="wheel-current-game-hint" class="mt-2.5 text-sm sm:text-base font-serif italic text-amber-300/90 h-6 flex items-center justify-center gap-1.5">
-                <span>✨ Колесо готово — нажмите «КРУТИТЬ» для запуска!</span>
+                <span>⏳ Загрузка обложек игр...</span>
             </div>
         </div>
 
@@ -305,21 +300,186 @@
         const sliceAngle = (2 * Math.PI) / totalItems;
         let currentRotationAngle = 0;
 
-        // Предзагрузка картинок обложек Steam
+        // Предзагрузка картинок обложек Steam с каскадом запасных вариантов (fallback)
         const loadedImages = {};
-        games.forEach((g, idx) => {
+        let loadedCount = 0;
+        let isPreloading = true;
+
+        // Создание в памяти красивой ведьмачьей обложки-заглушки (если игра удалена из Steam или нет сети)
+        function createProceduralCover(gameTitle, genre) {
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = 460;
+            offCanvas.height = 215;
+            const octx = offCanvas.getContext('2d');
+            
+            // Радиальный фон: глубокий темный бархат / кожа
+            const grad = octx.createRadialGradient(230, 107, 30, 230, 107, 240);
+            grad.addColorStop(0, '#38160c');
+            grad.addColorStop(0.7, '#1f0904');
+            grad.addColorStop(1, '#0c0301');
+            octx.fillStyle = grad;
+            octx.fillRect(0, 0, 460, 215);
+
+            // Резная золотая кайма
+            octx.strokeStyle = '#92400e';
+            octx.lineWidth = 6;
+            octx.strokeRect(6, 6, 448, 203);
+            octx.strokeStyle = '#f59e0b';
+            octx.lineWidth = 2;
+            octx.strokeRect(10, 10, 440, 195);
+
+            // Бейдж жанра
+            octx.fillStyle = '#f59e0b';
+            octx.font = 'bold 16px "Cinzel Decorative", serif, sans-serif';
+            octx.textAlign = 'center';
+            octx.fillText('⚔️ ' + (genre || 'КВЕСТ').toUpperCase() + ' ⚔️', 230, 48);
+
+            // Название игры в центре
+            octx.fillStyle = '#fef3c7';
+            octx.font = 'bold 24px "Cinzel", Georgia, serif';
+            octx.shadowColor = 'rgba(0,0,0,0.95)';
+            octx.shadowBlur = 8;
+            octx.shadowOffsetX = 2;
+            octx.shadowOffsetY = 2;
+            
+            // Перенос длинных названий
+            const title = gameTitle || 'Игра';
+            if (title.length > 20) {
+                const words = title.split(' ');
+                const mid = Math.ceil(words.length / 2);
+                const line1 = words.slice(0, mid).join(' ');
+                const line2 = words.slice(mid).join(' ');
+                octx.fillText(line1, 230, 102);
+                octx.fillText(line2, 230, 136);
+            } else {
+                octx.fillText(title, 230, 118);
+            }
+
+            // Нижняя руническая полоса
+            octx.shadowBlur = 0;
+            octx.fillStyle = '#b45309';
+            octx.font = '12px monospace';
+            octx.fillText('◆  W I T C H E R   C O N T R A C T  ◆', 230, 185);
+
+            const proceduralImg = new Image();
+            proceduralImg.src = offCanvas.toDataURL('image/jpeg', 0.85);
+            return proceduralImg;
+        }
+
+        function getCandidateUrls(g) {
+            const list = [];
             if (g.image_url) {
+                list.push(g.image_url);
+                if (g.image_url.includes('/header.jpg')) {
+                    list.push(g.image_url.replace('/header.jpg', '/capsule_231x87.jpg'));
+                }
+                if (g.image_url.includes('/capsule_231x87.jpg')) {
+                    list.push(g.image_url.replace('/capsule_231x87.jpg', '/header.jpg'));
+                }
+            }
+            if (g.steam_appid) {
+                list.push(`https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.steam_appid}/capsule_231x87.jpg`);
+                list.push(`https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${g.steam_appid}/capsule_231x87.jpg`);
+                list.push(`https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${g.steam_appid}/header.jpg`);
+                list.push(`https://cdn.akamai.steamstatic.com/steam/apps/${g.steam_appid}/header.jpg`);
+                list.push(`https://cdn.akamai.steamstatic.com/steam/apps/${g.steam_appid}/capsule_231x87.jpg`);
+            }
+            return [...new Set(list.filter(Boolean))];
+        }
+
+        function updatePreloaderUI() {
+            if (!isPreloading) return;
+            const centerText = document.getElementById('wheel-center-text');
+            const statusText = document.getElementById('wheel-status-text');
+            const hintEl = document.getElementById('wheel-current-game-hint');
+            if (centerText) {
+                centerText.innerHTML = `
+                    <span class="text-[9px] sm:text-[10px] text-amber-200 uppercase tracking-widest block font-heading font-black">ЗАГРУЗКА</span>
+                    <span class="text-[9px] sm:text-[10px] text-amber-400 font-mono block">${loadedCount}/${totalItems}</span>
+                `;
+            }
+            if (statusText) {
+                statusText.innerHTML = `⏳ Загрузка обложек игр: <strong>${loadedCount} из ${totalItems}</strong>...`;
+            }
+            if (hintEl) {
+                hintEl.innerHTML = `<span>⏳ Подготовка рулетки: ${loadedCount} из ${totalItems} обложек...</span>`;
+            }
+        }
+
+        function activateReadyState() {
+            if (!isPreloading) return;
+            isPreloading = false;
+            const centerBtn = document.getElementById('wheel-center-button');
+            const centerIcon = document.getElementById('wheel-center-icon');
+            const centerText = document.getElementById('wheel-center-text');
+            const statusText = document.getElementById('wheel-status-text');
+            const hintEl = document.getElementById('wheel-current-game-hint');
+            if (centerBtn) {
+                centerBtn.classList.remove('from-[#3a180e]', 'via-[#240e07]', 'to-[#120603]', 'border-amber-500/80', 'shadow-[0_0_25px_rgba(245,158,11,0.5)]');
+                centerBtn.classList.add('from-[#8f1616]', 'via-[#6d1010]', 'to-[#3a0606]', 'border-amber-300', 'shadow-[0_0_30px_rgba(239,68,68,0.7),0_0_15px_rgba(252,211,77,0.8)]', 'animate-pulse');
+                centerBtn.setAttribute('title', 'Нажмите, чтобы запустить колесо фортуны!');
+            }
+            if (centerIcon) centerIcon.textContent = '🎲';
+            if (centerText) {
+                centerText.innerHTML = `
+                    <span class="text-xs sm:text-sm font-heading font-black text-amber-100 uppercase tracking-widest leading-none drop-shadow pt-0.5">
+                        КРУТИТЬ
+                    </span>
+                `;
+            }
+            if (statusText) {
+                statusText.textContent = {% if is_technical %}'Бесплатная замена нерабочей игры! Нажмите «КРУТИТЬ», чтобы запустить колесо.'{% elif is_reroll %}'Списан 1 реролл (осталось: {{ current_user.rerolls_left if current_user else 0 }}). Нажмите «КРУТИТЬ», чтобы запустить колесо.'{% else %}'Все обложки загружены! Нажмите «КРУТИТЬ» в центре колеса или кликните по нему!'{% endif %};
+            }
+            if (hintEl) {
+                hintEl.innerHTML = '<span>✨ Колесо готово — нажмите «КРУТИТЬ» для запуска!</span>';
+            }
+            if (!isSpinning && !spinFinished) {
+                drawWheel(currentRotationAngle);
+            }
+        }
+
+        function loadGameImage(g, idx) {
+            const candidates = getCandidateUrls(g);
+            let candIdx = 0;
+
+            function tryNext() {
+                if (candIdx >= candidates.length) {
+                    const procedural = createProceduralCover(g.title, g.genre);
+                    loadedImages[idx] = procedural;
+                    loadedCount++;
+                    updatePreloaderUI();
+                    if (!isSpinning && !spinFinished) drawWheel(currentRotationAngle);
+                    if (loadedCount >= totalItems) activateReadyState();
+                    return;
+                }
+
+                const testUrl = candidates[candIdx++];
                 const img = new Image();
                 img.onload = function() {
                     loadedImages[idx] = img;
+                    loadedCount++;
+                    updatePreloaderUI();
                     if (!isSpinning && !spinFinished) drawWheel(currentRotationAngle);
+                    if (loadedCount >= totalItems) activateReadyState();
                 };
                 img.onerror = function() {
-                    console.warn("Image load failed for:", g.title, g.image_url);
+                    tryNext();
                 };
-                img.src = g.image_url;
+                img.src = testUrl;
             }
-        });
+
+            tryNext();
+        }
+
+        // Запуск параллельной предзагрузки для всех элементов барабана
+        games.forEach((g, idx) => loadGameImage(g, idx));
+
+        // Максимальный таймаут предзагрузки 2.0с
+        setTimeout(() => {
+            if (isPreloading) {
+                activateReadyState();
+            }
+        }, 2000);
 
         // Цвета подложки сектора если картинка еще грузится
         const bgColors = [
@@ -501,6 +661,7 @@
         function startSpin() {
             if (isSpinning || spinFinished) return;
             isSpinning = true;
+            isPreloading = false;
 
             if (audioCtx && audioCtx.state === 'suspended') {
                 audioCtx.resume();

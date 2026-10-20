@@ -696,10 +696,12 @@ async def _build_roulette_reel(
 
     fake_games: list[dict[str, Any]] = []
     for cand in reel_candidates:
-        cand_img = cand.get("image_url") or (f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{cand.get('steam_appid')}/header.jpg" if cand.get("steam_appid") else None)
+        cand_appid = cand.get("steam_appid")
+        cand_img = resolve_single_image_url(cand_appid, cand.get("image_url"))
         fake_games.append({
             "title": cand["title"],
             "image_url": cand_img,
+            "steam_appid": cand_appid,
             "genre": cand.get("tags", ["Игра"])[0] if cand.get("tags") else "Экшен",
             "hltb_hours": cand.get("hltb_main_story_hours") or 0.0,
             "developer": cand.get("developer"),
@@ -714,11 +716,13 @@ async def _build_roulette_reel(
             limit=remaining,
         )
         for cand in more_candidates:
-            cand_img = cand.get("image_url") or (f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{cand.get('steam_appid')}/header.jpg" if cand.get("steam_appid") else None)
+            cand_appid = cand.get("steam_appid")
+            cand_img = resolve_single_image_url(cand_appid, cand.get("image_url"))
             if cand_img:
                 fake_games.append({
                     "title": cand["title"],
                     "image_url": cand_img,
+                    "steam_appid": cand_appid,
                     "genre": cand.get("tags", ["Игра"])[0] if cand.get("tags") else "Экшен",
                     "hltb_hours": cand.get("hltb_main_story_hours") or 0.0,
                     "developer": cand.get("developer"),
@@ -743,7 +747,8 @@ async def _build_roulette_reel(
         for fbg in fb_games:
             fake_games.append({
                 "title": fbg.title,
-                "image_url": fbg.image_url,
+                "image_url": resolve_single_image_url(fbg.steam_appid, fbg.image_url),
+                "steam_appid": fbg.steam_appid,
                 "genre": fbg.genre,
                 "hltb_hours": fbg.hltb_hours,
                 "developer": fbg.developer,
@@ -754,7 +759,8 @@ async def _build_roulette_reel(
 
     winning_dict = {
         "title": winning_game.title,
-        "image_url": winning_game.image_url,
+        "image_url": resolve_single_image_url(winning_game.steam_appid, winning_game.image_url),
+        "steam_appid": winning_game.steam_appid,
         "genre": winning_game.genre,
         "hltb_hours": winning_game.hltb_hours,
         "developer": winning_game.developer,

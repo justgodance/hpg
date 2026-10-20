@@ -28,8 +28,19 @@ def get_games_db_connection() -> sqlite3.Connection:
     return conn
 
 
+def normalize_steam_image_url(url: Optional[str], appid: Optional[int] = None) -> Optional[str]:
+    """Sanitizes and normalizes Steam image URLs to ensure HTTP 200 availability."""
+    if not url:
+        return f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/header.jpg" if appid else None
+    
+    # Steam CDN hash paths are unique to capsule images; header.jpg with a capsule hash returns 404
+    if re.search(r'/[0-9a-f]{32,45}/header\.jpg', url):
+        return url.replace('/header.jpg', '/capsule_231x87.jpg')
+    return url
+
+
 def _parse_game_row(row: sqlite3.Row) -> dict[str, Any]:
-    """Helper to convert sqlite3.Row to game dictionary with parsed tags."""
+    """Helper to convert sqlite3.Row to game dictionary with parsed tags and valid image URL."""
     d = dict(row)
     tags_raw = d.get("tags")
     if tags_raw and isinstance(tags_raw, str):
@@ -40,10 +51,8 @@ def _parse_game_row(row: sqlite3.Row) -> dict[str, Any]:
     elif not tags_raw:
         d["tags"] = []
 
-    # Ensure valid Steam header image URL
     appid = d.get("steam_appid")
-    if not d.get("image_url") and appid:
-        d["image_url"] = f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/header.jpg"
+    d["image_url"] = normalize_steam_image_url(d.get("image_url"), appid)
 
     if not d.get("steam_url") and appid:
         d["steam_url"] = f"https://store.steampowered.com/app/{appid}/"
@@ -55,62 +64,29 @@ _IMAGE_CACHE: dict[int, str] = {}
 
 
 def resolve_single_image_url(appid: Optional[int], current_url: Optional[str] = None) -> Optional[str]:
-    """Resolves working Steam cover URL with hash or returns cached/fallback URL."""
+    """Resolves working Steam cover URL using cache and instant normalization without blocking network calls."""
     if not appid:
         return current_url
     if appid in _IMAGE_CACHE:
         return _IMAGE_CACHE[appid]
-    if current_url and re.search(r'/[0-9a-f]{32,45}/', current_url):
-        _IMAGE_CACHE[appid] = current_url
-        return current_url
-    if appid < 3000000 and current_url and "header.jpg" in current_url:
-        _IMAGE_CACHE[appid] = current_url
-        return current_url
+    
+    normalized = normalize_steam_image_url(current_url, appid)
+    if normalized:
+        _IMAGE_CACHE[appid] = normalized
+        return normalized
 
-    # Query Steam official appdetails API for working hash path
-    try:
-        r = requests.get(f"https://store.steampowered.com/api/appdetails?appids={appid}", timeout=2.5).json()
-        data = r.get(str(appid), {}).get("data", {})
-        header = data.get("header_image") or data.get("capsule_image")
-        if header:
-            _IMAGE_CACHE[appid] = header
-            try:
-                conn = get_games_db_connection()
-                conn.execute("UPDATE games SET image_url = ? WHERE steam_appid = ?", (header, appid))
-                conn.commit()
-                conn.close()
-            except Exception:
-                pass
-            return header
-    except Exception:
-        pass
-
-    return current_url
-
-
-def _resolve_single_image(g: dict[str, Any]) -> None:
-    appid = g.get("steam_appid")
-    if not appid:
-        return
-    resolved = resolve_single_image_url(appid, g.get("image_url"))
-    if resolved:
-        g["image_url"] = resolved
+    fallback = f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/header.jpg"
+    _IMAGE_CACHE[appid] = fallback
+    return fallback
 
 
 def resolve_game_images(games: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    to_resolve = [
-        g for g in games
-        if g.get("steam_appid") and g.get("steam_appid") not in _IMAGE_CACHE
-        and not re.search(r'/[0-9a-f]{32,45}/', g.get("image_url") or "")
-        and g.get("steam_appid") >= 3000000
-    ]
-    if to_resolve:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(12, len(to_resolve))) as executor:
-            list(executor.map(_resolve_single_image, to_resolve))
+    """Instant non-blocking normalization for all game covers in the reel."""
     for g in games:
         appid = g.get("steam_appid")
-        if appid and appid in _IMAGE_CACHE:
-            g["image_url"] = _IMAGE_CACHE[appid]
+        g["image_url"] = normalize_steam_image_url(g.get("image_url"), appid)
+        if appid and g["image_url"]:
+            _IMAGE_CACHE[appid] = g["image_url"]
     return games
 
 
@@ -170,8 +146,9 @@ def query_games_from_parser_db(
                 conditions.append("review_percentage >= ?")
                 params.append(min_rating)
 
+        order_clause = "ORDER BY (CASE WHEN image_url LIKE '%shared.fastly%' OR image_url LIKE '%/capsule_%' THEN 0 ELSE 1 END), RANDOM()"
         where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
-        query = f"SELECT * FROM games{where_clause} ORDER BY RANDOM() LIMIT {limit * 2}"
+        query = f"SELECT * FROM games{where_clause} {order_clause} LIMIT {limit * 2}"
         cur.execute(query, params)
         raw_rows = cur.fetchall()
 
@@ -194,7 +171,7 @@ def query_games_from_parser_db(
                 fallback_conds.append("review_percentage >= ?")
                 fb_params.append(min_rating)
 
-            fb_query = f"SELECT * FROM games WHERE {' AND '.join(fallback_conds)} ORDER BY RANDOM() LIMIT {limit * 2}"
+            fb_query = f"SELECT * FROM games WHERE {' AND '.join(fallback_conds)} {order_clause} LIMIT {limit * 2}"
             cur.execute(fb_query, fb_params)
             fb_rows = [_parse_game_row(r) for r in cur.fetchall()]
             for g in fb_rows:
@@ -204,8 +181,8 @@ def query_games_from_parser_db(
                 if len(filtered) >= limit:
                     return resolve_game_images(filtered[:limit])
 
-        # Step 3: Global fallback from games.db (any games, prioritized by positive reviews)
-        cur.execute("SELECT * FROM games ORDER BY RANDOM() LIMIT ?", (limit * 2,))
+        # Step 3: Global fallback from games.db (any games, prioritized by positive reviews and images)
+        cur.execute(f"SELECT * FROM games {order_clause} LIMIT ?", (limit * 2,))
         global_rows = [_parse_game_row(r) for r in cur.fetchall()]
         for g in global_rows:
             if not any(item["title"] == g["title"] for item in filtered):
